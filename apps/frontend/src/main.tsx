@@ -7,6 +7,8 @@ import { useDebouncedValue } from './lib/useDebouncedValue';
 import type { Connection, DatasetSummary, Neighborhood, Neuron, Region, Statistics } from './types/connectome';
 import './styles.css';
 
+type ConnectionSort = 'weight_desc' | 'weight_asc' | 'source_region' | 'target_region' | 'neuron_id';
+
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="stat">
@@ -123,18 +125,50 @@ function ConnectionTable({
   title,
   rows,
   direction,
+  selectedNeuronId,
+  page,
+  total,
+  search,
+  sort,
+  loading,
+  onSearch,
+  onSort,
+  onPage,
   onInspect,
   onNeuron
 }: {
   title: string;
   rows: Connection[];
   direction: 'incoming' | 'outgoing';
+  selectedNeuronId: string | null;
+  page: number;
+  total: number;
+  search: string;
+  sort: ConnectionSort;
+  loading: boolean;
+  onSearch: (value: string) => void;
+  onSort: (value: ConnectionSort) => void;
+  onPage: (value: number) => void;
   onInspect: (edge: Connection) => void;
   onNeuron: (id: string) => void;
 }) {
+  const pageCount = Math.max(1, Math.ceil(total / 25));
   return (
     <div className="table-card">
-      <div className="section-title"><ArrowDownToLine size={15} /> {title}</div>
+      <div className="table-header">
+        <div className="section-title"><ArrowDownToLine size={15} /> {title}</div>
+        {selectedNeuronId && <a href={api.connectionsExportUrl(selectedNeuronId, direction, search, sort)} target="_blank" rel="noreferrer">Export CSV</a>}
+      </div>
+      <div className="table-controls">
+        <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search within connections" />
+        <select value={sort} onChange={(event) => onSort(event.target.value as ConnectionSort)}>
+          <option value="weight_desc">Highest synapse count</option>
+          <option value="weight_asc">Lowest synapse count</option>
+          <option value="source_region">Source region</option>
+          <option value="target_region">Target region</option>
+          <option value="neuron_id">Neuron ID</option>
+        </select>
+      </div>
       <table>
         <thead>
           <tr>
@@ -155,7 +189,7 @@ function ConnectionTable({
                 <td>{direction === 'incoming' ? row.sourceCellType : row.targetCellType}</td>
                 <td>{direction === 'incoming' ? row.sourceRegion : row.targetRegion}</td>
                 <td className="mono">{row.weight.toLocaleString()}</td>
-                <td>{row.sourcePredictedNt || row.predictedNt || 'unknown'}</td>
+                <td>{direction === 'incoming' ? row.sourcePredictedNt || 'unknown' : row.targetPredictedNt || 'unknown'}</td>
                 <td><button onClick={() => onInspect(row)}>Inspect</button></td>
               </tr>
             );
@@ -163,6 +197,12 @@ function ConnectionTable({
           {!rows.length && <tr><td colSpan={6} className="empty-cell">No connections were found in the indexed dataset.</td></tr>}
         </tbody>
       </table>
+      <div className="pager">
+        <span>{loading ? 'Loading connections' : `${total.toLocaleString()} connections`}</span>
+        <button disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>Previous</button>
+        <span>Page {page} of {pageCount}</span>
+        <button disabled={page >= pageCount || loading} onClick={() => onPage(page + 1)}>Next</button>
+      </div>
     </div>
   );
 }
@@ -234,12 +274,23 @@ function App() {
   const [stats, setStats] = React.useState<Statistics | null>(null);
   const [incoming, setIncoming] = React.useState<Connection[]>([]);
   const [outgoing, setOutgoing] = React.useState<Connection[]>([]);
+  const [incomingTotal, setIncomingTotal] = React.useState(0);
+  const [outgoingTotal, setOutgoingTotal] = React.useState(0);
+  const [incomingPage, setIncomingPage] = React.useState(1);
+  const [outgoingPage, setOutgoingPage] = React.useState(1);
+  const [incomingSearch, setIncomingSearch] = React.useState('');
+  const [outgoingSearch, setOutgoingSearch] = React.useState('');
+  const [incomingSort, setIncomingSort] = React.useState<ConnectionSort>('weight_desc');
+  const [outgoingSort, setOutgoingSort] = React.useState<ConnectionSort>('weight_desc');
+  const [tableLoading, setTableLoading] = React.useState(false);
   const [neighborhood, setNeighborhood] = React.useState<Neighborhood | null>(null);
   const [direction, setDirection] = React.useState('both');
   const [maxNodes, setMaxNodes] = React.useState(50);
   const [selectedConnection, setSelectedConnection] = React.useState<Connection | null>(null);
   const [history, setHistory] = React.useState<Neuron[]>([]);
   const [error, setError] = React.useState('');
+  const [searchLoading, setSearchLoading] = React.useState(false);
+  const [neuronLoading, setNeuronLoading] = React.useState(false);
   const debouncedQuery = useDebouncedValue(query, 250);
 
   React.useEffect(() => {
@@ -252,31 +303,76 @@ function App() {
   }, []);
 
   React.useEffect(() => {
+    setSearchLoading(true);
     api.search(debouncedQuery, selectedRegion, 30)
       .then((response) => setResults(response.data))
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setSearchLoading(false));
   }, [debouncedQuery, selectedRegion]);
 
   const openNeuron = React.useCallback((id: string) => {
     setError('');
-    Promise.all([api.neuron(id), api.statistics(id), api.incoming(id), api.outgoing(id), api.neighborhood(id, direction, maxNodes)])
+    setNeuronLoading(true);
+    setIncomingPage(1);
+    setOutgoingPage(1);
+    Promise.all([api.neuron(id), api.statistics(id), api.incoming(id, 1, incomingSearch, incomingSort), api.outgoing(id, 1, outgoingSearch, outgoingSort), api.neighborhood(id, direction, maxNodes)])
       .then(([neuronResponse, statsResponse, incomingResponse, outgoingResponse, neighborhoodResponse]) => {
         setSelected(neuronResponse.data);
         setStats(statsResponse.data);
         setIncoming(incomingResponse.data);
         setOutgoing(outgoingResponse.data);
+        setIncomingTotal(incomingResponse.metadata.total ?? incomingResponse.data.length);
+        setOutgoingTotal(outgoingResponse.metadata.total ?? outgoingResponse.data.length);
         setNeighborhood(neighborhoodResponse.data);
         setSelectedConnection(null);
         setHistory((items) => [neuronResponse.data, ...items.filter((item) => item.id !== id)].slice(0, 8));
       })
-      .catch((err) => setError(err.message));
-  }, [direction, maxNodes]);
+      .catch((err) => setError(err.message))
+      .finally(() => setNeuronLoading(false));
+  }, [direction, incomingSearch, incomingSort, maxNodes, outgoingSearch, outgoingSort]);
+
+  const resetDemo = React.useCallback(() => {
+    setSelected(null);
+    setStats(null);
+    setIncoming([]);
+    setOutgoing([]);
+    setNeighborhood(null);
+    setSelectedConnection(null);
+    setQuery('');
+    setSelectedRegion('');
+    setIncomingSearch('');
+    setOutgoingSearch('');
+    setIncomingPage(1);
+    setOutgoingPage(1);
+  }, []);
+
+  const runDemo = React.useCallback(() => {
+    openNeuron('10001');
+    document.getElementById('explorer')?.scrollIntoView({ behavior: 'smooth' });
+  }, [openNeuron]);
 
   React.useEffect(() => {
     if (selected) {
       api.neighborhood(selected.id, direction, maxNodes).then((response) => setNeighborhood(response.data)).catch((err) => setError(err.message));
     }
   }, [direction, maxNodes, selected?.id]);
+
+  React.useEffect(() => {
+    if (!selected) return;
+    setTableLoading(true);
+    Promise.all([
+      api.incoming(selected.id, incomingPage, incomingSearch, incomingSort),
+      api.outgoing(selected.id, outgoingPage, outgoingSearch, outgoingSort)
+    ])
+      .then(([incomingResponse, outgoingResponse]) => {
+        setIncoming(incomingResponse.data);
+        setOutgoing(outgoingResponse.data);
+        setIncomingTotal(incomingResponse.metadata.total ?? incomingResponse.data.length);
+        setOutgoingTotal(outgoingResponse.metadata.total ?? outgoingResponse.data.length);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setTableLoading(false));
+  }, [incomingPage, incomingSearch, incomingSort, outgoingPage, outgoingSearch, outgoingSort, selected?.id]);
 
   return (
     <main className="app">
@@ -292,12 +388,21 @@ function App() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search neuron ID, cell type, region" />
             {query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={15} /></button>}
           </div>
+          <div className="demo-box">
+            <div>
+              <strong>Demo Mode</strong>
+              <span>Real subset example workflow</span>
+            </div>
+            <button onClick={runDemo}>Inspect example</button>
+            <button onClick={resetDemo}>Reset demo</button>
+          </div>
           <label className="field-label">Region filter</label>
           <select value={selectedRegion} onChange={(event) => setSelectedRegion(event.target.value)}>
             <option value="">All indexed regions</option>
             {regions.map((region) => <option key={region.name} value={region.name}>{region.name}</option>)}
           </select>
           <div className="section-title"><Activity size={15} /> Neuron Browser</div>
+          {searchLoading && <div className="inline-status">Searching indexed neurons...</div>}
           <div className="result-list">
             {results.map((neuron) => (
               <button className={selected?.id === neuron.id ? 'result active' : 'result'} key={neuron.id} onClick={() => openNeuron(neuron.id)}>
@@ -314,6 +419,7 @@ function App() {
         </aside>
         <section className="center">
           {error && <div className="error">{error}</div>}
+          {neuronLoading && <div className="inline-status">Loading neuron profile and local graph...</div>}
           <div className="controls-row">
             <label>Neighborhood</label>
             <select value={direction} onChange={(event) => setDirection(event.target.value)}>
@@ -328,8 +434,38 @@ function App() {
           </div>
           <GraphView neighborhood={neighborhood} selectedId={selected?.id ?? null} onSelectNeuron={openNeuron} onSelectConnection={setSelectedConnection} />
           <div className="tables">
-            <ConnectionTable title="Incoming Connections" rows={incoming} direction="incoming" onInspect={setSelectedConnection} onNeuron={openNeuron} />
-            <ConnectionTable title="Outgoing Connections" rows={outgoing} direction="outgoing" onInspect={setSelectedConnection} onNeuron={openNeuron} />
+            <ConnectionTable
+              title="Incoming Connections"
+              rows={incoming}
+              direction="incoming"
+              selectedNeuronId={selected?.id ?? null}
+              page={incomingPage}
+              total={incomingTotal}
+              search={incomingSearch}
+              sort={incomingSort}
+              loading={tableLoading}
+              onSearch={(value) => { setIncomingSearch(value); setIncomingPage(1); }}
+              onSort={(value) => { setIncomingSort(value); setIncomingPage(1); }}
+              onPage={setIncomingPage}
+              onInspect={setSelectedConnection}
+              onNeuron={openNeuron}
+            />
+            <ConnectionTable
+              title="Outgoing Connections"
+              rows={outgoing}
+              direction="outgoing"
+              selectedNeuronId={selected?.id ?? null}
+              page={outgoingPage}
+              total={outgoingTotal}
+              search={outgoingSearch}
+              sort={outgoingSort}
+              loading={tableLoading}
+              onSearch={(value) => { setOutgoingSearch(value); setOutgoingPage(1); }}
+              onSort={(value) => { setOutgoingSort(value); setOutgoingPage(1); }}
+              onPage={setOutgoingPage}
+              onInspect={setSelectedConnection}
+              onNeuron={openNeuron}
+            />
           </div>
           <div className="regions-panel">
             <div className="section-title"><Database size={15} /> Region Explorer</div>

@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any
 
 
+VALID_CONNECTION_SORTS = {"weight_desc", "weight_asc", "source_region", "target_region", "neuron_id"}
+
+
 class ConnectomeStore:
     def __init__(self, path: Path):
         self.path = path
@@ -94,6 +97,8 @@ class ConnectomeStore:
         search: str = "",
         sort: str = "weight_desc",
     ) -> tuple[list[dict[str, Any]], int]:
+        if sort not in VALID_CONNECTION_SORTS:
+            raise ValueError(f"Unsupported connection sort: {sort}")
         edges = self.incoming[str(neuron_id)] if direction == "incoming" else self.outgoing[str(neuron_id)]
         rows = [self.enrich_edge(edge) for edge in edges]
         if search:
@@ -203,14 +208,30 @@ class ConnectomeStore:
         if fmt == "json":
             return json.dumps({"neuron": neuron, "statistics": stats, "topIncoming": incoming, "topOutgoing": outgoing}, indent=2)
         if fmt == "csv":
-            buffer = io.StringIO()
-            writer = csv.DictWriter(buffer, fieldnames=["direction", "source", "target", "weight", "sourceCellType", "targetCellType"])
-            writer.writeheader()
-            for direction, rows in (("incoming", incoming), ("outgoing", outgoing)):
-                for row in rows:
-                    writer.writerow({"direction": direction, **{key: row.get(key) for key in writer.fieldnames if key != "direction"}})
-            return buffer.getvalue()
+            return self.connections_csv(incoming, "incoming", include_direction=True) + self.connections_csv(outgoing, "outgoing", include_header=False, include_direction=True)
         return self.markdown_report(neuron, stats, incoming, outgoing)
+
+    def connections_csv(
+        self,
+        rows: list[dict[str, Any]],
+        direction: str,
+        *,
+        include_header: bool = True,
+        include_direction: bool = False,
+    ) -> str:
+        buffer = io.StringIO()
+        fields = ["source", "target", "weight", "sourceCellType", "sourceRegion", "sourcePredictedNt", "targetCellType", "targetRegion", "targetPredictedNt", "provenance"]
+        if include_direction:
+            fields = ["direction", *fields]
+        writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+        if include_header:
+            writer.writeheader()
+        for row in rows:
+            payload = {key: row.get(key) for key in fields}
+            if include_direction:
+                payload["direction"] = direction
+            writer.writerow(payload)
+        return buffer.getvalue()
 
     def markdown_report(self, neuron: dict[str, Any], stats: dict[str, Any] | None, incoming: list[dict[str, Any]], outgoing: list[dict[str, Any]]) -> str:
         lines = [

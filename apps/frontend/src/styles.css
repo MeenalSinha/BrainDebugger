@@ -40,6 +40,11 @@ a:hover {
   border-color: #0f766e;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 code,
 .mono {
   font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
@@ -246,6 +251,31 @@ select {
   gap: 8px;
 }
 
+.demo-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #d7dee8;
+  background: #ffffff;
+  border-radius: 8px;
+}
+
+.demo-box div {
+  display: grid;
+  gap: 2px;
+}
+
+.demo-box span,
+.inline-status {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.demo-box button {
+  min-height: 34px;
+}
+
 .result,
 .history button {
   width: 100%;
@@ -341,6 +371,53 @@ select {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+}
+
+.table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 12px;
+}
+
+.table-header a {
+  padding: 7px 9px;
+  border: 1px solid #cbd5e1;
+  color: #0f766e;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.table-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 240px);
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.table-controls input {
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.pager button {
+  padding: 6px 10px;
 }
 
 table {
@@ -476,6 +553,10 @@ th {
   }
 
   .controls-row {
+    grid-template-columns: 1fr;
+  }
+
+  .table-controls {
     grid-template-columns: 1fr;
   }
 

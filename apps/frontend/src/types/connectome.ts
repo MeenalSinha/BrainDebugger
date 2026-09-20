@@ -51,6 +51,7 @@ export type Connection = {
   targetCellType: string;
   predictedNt?: string | null;
   sourcePredictedNt?: string | null;
+  targetPredictedNt?: string | null;
   provenance?: string;
   scopeNote?: string;
 };
