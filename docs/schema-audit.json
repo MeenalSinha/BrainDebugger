@@ -1,0 +1,1004 @@
+{
+  "dataset": "Janelia MaleCNS v1.0",
+  "raw_dir": "C:\\Users\\Meenal Sinha\\Documents\\Codex\\2026-09-19\\https-male-cns-janelia-org-download\\outputs\\malecns-connectome",
+  "files": [
+    {
+      "file": "body-annotations-male-cns-v1.0-minconf-0.5.feather",
+      "rows": 211577,
+      "columns": [
+        {
+          "name": "assignedOlHex1",
+          "type": "double"
+        },
+        {
+          "name": "assignedOlHex2",
+          "type": "double"
+        },
+        {
+          "name": "bodyId",
+          "type": "int64"
+        },
+        {
+          "name": "flywireType",
+          "type": "string"
+        },
+        {
+          "name": "group",
+          "type": "double"
+        },
+        {
+          "name": "instance",
+          "type": "string"
+        },
+        {
+          "name": "somaSide",
+          "type": "string"
+        },
+        {
+          "name": "statusLabel",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "superclass",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "vfbId",
+          "type": "string"
+        },
+        {
+          "name": "hemibrainType",
+          "type": "string"
+        },
+        {
+          "name": "itoleeHl",
+          "type": "string"
+        },
+        {
+          "name": "supertype",
+          "type": "string"
+        },
+        {
+          "name": "birthtime",
+          "type": "string"
+        },
+        {
+          "name": "mancBodyid",
+          "type": "double"
+        },
+        {
+          "name": "mancGroup",
+          "type": "double"
+        },
+        {
+          "name": "mancType",
+          "type": "string"
+        },
+        {
+          "name": "subclass",
+          "type": "string"
+        },
+        {
+          "name": "synonyms",
+          "type": "string"
+        },
+        {
+          "name": "class",
+          "type": "string"
+        },
+        {
+          "name": "rootSide",
+          "type": "string"
+        },
+        {
+          "name": "somaNeuromere",
+          "type": "string"
+        },
+        {
+          "name": "trumanHl",
+          "type": "string"
+        },
+        {
+          "name": "dimorphism",
+          "type": "string"
+        },
+        {
+          "name": "matchingNotes",
+          "type": "string"
+        },
+        {
+          "name": "entryNerve",
+          "type": "string"
+        },
+        {
+          "name": "mancSerial",
+          "type": "double"
+        },
+        {
+          "name": "mcnsSerial",
+          "type": "double"
+        },
+        {
+          "name": "serialMotif",
+          "type": "string"
+        },
+        {
+          "name": "fruDsx",
+          "type": "string"
+        },
+        {
+          "name": "exitNerve",
+          "type": "string"
+        },
+        {
+          "name": "receptorType",
+          "type": "string"
+        },
+        {
+          "name": "somaLocation",
+          "type": "list<item: int64>"
+        },
+        {
+          "name": "tosomaLocation",
+          "type": "list<item: int64>"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ],
+      "sample": [
+        {
+          "assignedOlHex1": NaN,
+          "assignedOlHex2": NaN,
+          "bodyId": "10001",
+          "flywireType": "DNp01",
+          "group": "10001.0",
+          "instance": "DNp01(GF)_R",
+          "somaSide": "R",
+          "statusLabel": "Roughly traced",
+          "superclass": "descending_neuron",
+          "type": "DNp01",
+          "vfbId": "VFB_jrmc30my",
+          "hemibrainType": "Giant Fiber",
+          "itoleeHl": "putative_primary",
+          "supertype": NaN,
+          "birthtime": "early",
+          "mancBodyid": "10000.0",
+          "mancGroup": "10000.0",
+          "mancType": "DNp01",
+          "subclass": "lt",
+          "synonyms": "Kennedy and Broadie 2018: GF",
+          "class": NaN,
+          "rootSide": NaN,
+          "somaNeuromere": NaN,
+          "trumanHl": NaN,
+          "dimorphism": NaN,
+          "matchingNotes": NaN,
+          "entryNerve": NaN,
+          "mancSerial": NaN,
+          "mcnsSerial": NaN,
+          "serialMotif": NaN,
+          "fruDsx": NaN,
+          "exitNerve": NaN,
+          "receptorType": NaN,
+          "somaLocation": "[37124 22258 36274]",
+          "tosomaLocation": NaN,
+          "status": "Traced"
+        },
+        {
+          "assignedOlHex1": NaN,
+          "assignedOlHex2": NaN,
+          "bodyId": "10002",
+          "flywireType": "OCG01d",
+          "group": "10002.0",
+          "instance": "OCG01d_L",
+          "somaSide": "L",
+          "statusLabel": "Roughly traced",
+          "superclass": "visual_projection",
+          "type": "OCG01d",
+          "vfbId": "VFB_jrmc1nh6",
+          "hemibrainType": "OCG01",
+          "itoleeHl": NaN,
+          "supertype": NaN,
+          "birthtime": NaN,
+          "mancBodyid": NaN,
+          "mancGroup": NaN,
+          "mancType": NaN,
+          "subclass": NaN,
+          "synonyms": NaN,
+          "class": NaN,
+          "rootSide": NaN,
+          "somaNeuromere": NaN,
+          "trumanHl": NaN,
+          "dimorphism": NaN,
+          "matchingNotes": NaN,
+          "entryNerve": NaN,
+          "mancSerial": NaN,
+          "mcnsSerial": NaN,
+          "serialMotif": NaN,
+          "fruDsx": NaN,
+          "exitNerve": NaN,
+          "receptorType": NaN,
+          "somaLocation": "[50214 10279 27497]",
+          "tosomaLocation": NaN,
+          "status": "Traced"
+        },
+        {
+          "assignedOlHex1": NaN,
+          "assignedOlHex2": NaN,
+          "bodyId": "10003",
+          "flywireType": "VCH",
+          "group": "10003.0",
+          "instance": "VCH_R",
+          "somaSide": "R",
+          "statusLabel": "Prelim Roughly traced",
+          "superclass": "visual_centrifugal",
+          "type": "VCH",
+          "vfbId": "VFB_jrmc074n",
+          "hemibrainType": "VCH",
+          "itoleeHl": "putative_primary",
+          "supertype": NaN,
+          "birthtime": "early",
+          "mancBodyid": NaN,
+          "mancGroup": NaN,
+          "mancType": NaN,
+          "subclass": NaN,
+          "synonyms": NaN,
+          "class": NaN,
+          "rootSide": NaN,
+          "somaNeuromere": NaN,
+          "trumanHl": NaN,
+          "dimorphism": NaN,
+          "matchingNotes": NaN,
+          "entryNerve": NaN,
+          "mancSerial": NaN,
+          "mcnsSerial": NaN,
+          "serialMotif": NaN,
+          "fruDsx": NaN,
+          "exitNerve": NaN,
+          "receptorType": NaN,
+          "somaLocation": "[46716 21029 15714]",
+          "tosomaLocation": NaN,
+          "status": "Traced"
+        }
+      ]
+    },
+    {
+      "file": "body-neurotransmitters-male-cns-v1.0.feather",
+      "rows": 1835518,
+      "columns": [
+        {
+          "name": "body",
+          "type": "int64"
+        },
+        {
+          "name": "cell_type",
+          "type": "string"
+        },
+        {
+          "name": "total_nt_predictions",
+          "type": "int32"
+        },
+        {
+          "name": "predicted_nt_confidence",
+          "type": "double"
+        },
+        {
+          "name": "predicted_nt",
+          "type": "string"
+        },
+        {
+          "name": "ground_truth",
+          "type": "string"
+        },
+        {
+          "name": "celltype_total_nt_predictions",
+          "type": "int32"
+        },
+        {
+          "name": "celltype_predicted_nt",
+          "type": "string"
+        },
+        {
+          "name": "celltype_predicted_nt_confidence",
+          "type": "double"
+        },
+        {
+          "name": "consensus_nt",
+          "type": "string"
+        }
+      ],
+      "sample": [
+        {
+          "body": "10001",
+          "cell_type": "DNp01",
+          "total_nt_predictions": "1015",
+          "predicted_nt_confidence": "0.5004955542656235",
+          "predicted_nt": "acetylcholine",
+          "ground_truth": NaN,
+          "celltype_total_nt_predictions": "1991",
+          "celltype_predicted_nt": "acetylcholine",
+          "celltype_predicted_nt_confidence": "0.5282633322710556",
+          "consensus_nt": "acetylcholine"
+        },
+        {
+          "body": "10002",
+          "cell_type": "OCG01d",
+          "total_nt_predictions": "1443",
+          "predicted_nt_confidence": "0.9558953111126071",
+          "predicted_nt": "acetylcholine",
+          "ground_truth": NaN,
+          "celltype_total_nt_predictions": "2818",
+          "celltype_predicted_nt": "acetylcholine",
+          "celltype_predicted_nt_confidence": "0.9564758206514237",
+          "consensus_nt": "acetylcholine"
+        },
+        {
+          "body": "10003",
+          "cell_type": "VCH",
+          "total_nt_predictions": "4425",
+          "predicted_nt_confidence": "0.8793247902745723",
+          "predicted_nt": "gaba",
+          "ground_truth": "gaba",
+          "celltype_total_nt_predictions": "8721",
+          "celltype_predicted_nt": "gaba",
+          "celltype_predicted_nt_confidence": "0.8747990679914234",
+          "consensus_nt": "gaba"
+        }
+      ]
+    },
+    {
+      "file": "body-stats-male-cns-v1.0-minconf-0.5.feather",
+      "rows": 88384522,
+      "columns": [
+        {
+          "name": "body",
+          "type": "int64"
+        },
+        {
+          "name": "pre",
+          "type": "int32"
+        },
+        {
+          "name": "post",
+          "type": "int32"
+        },
+        {
+          "name": "status_fine",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "superclass",
+          "type": "string"
+        },
+        {
+          "name": "class",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "instance",
+          "type": "string"
+        },
+        {
+          "name": "downstream",
+          "type": "int64"
+        },
+        {
+          "name": "synweight",
+          "type": "int64"
+        },
+        {
+          "name": "rank",
+          "type": "int64"
+        }
+      ],
+      "sample": [
+        {
+          "body": "10009",
+          "pre": "31347",
+          "post": "82705",
+          "status_fine": "Roughly traced",
+          "superclass": "ol_intrinsic",
+          "class": NaN,
+          "type": "CT1",
+          "instance": "CT1_L",
+          "downstream": "188515",
+          "synweight": "271220",
+          "rank": "1"
+        },
+        {
+          "body": "10157",
+          "pre": "29405",
+          "post": "75837",
+          "status_fine": "Roughly traced",
+          "superclass": "ol_intrinsic",
+          "class": NaN,
+          "type": "CT1",
+          "instance": "CT1_R",
+          "downstream": "177665",
+          "synweight": "253502",
+          "rank": "2"
+        },
+        {
+          "body": "10977",
+          "pre": "16911",
+          "post": "118348",
+          "status_fine": "Roughly traced",
+          "superclass": "cb_intrinsic",
+          "class": NaN,
+          "type": "APL",
+          "instance": "APL_L",
+          "downstream": "133530",
+          "synweight": "251878",
+          "rank": "3"
+        }
+      ]
+    },
+    {
+      "file": "connectome-weights-male-cns-v1.0-minconf-0.5.feather",
+      "rows": 151856684,
+      "columns": [
+        {
+          "name": "body_pre",
+          "type": "int64"
+        },
+        {
+          "name": "body_post",
+          "type": "int64"
+        },
+        {
+          "name": "weight",
+          "type": "int64"
+        }
+      ],
+      "sample": [
+        {
+          "body_pre": "10352",
+          "body_post": "10351",
+          "weight": "2591"
+        },
+        {
+          "body_pre": "13612",
+          "body_post": "16076",
+          "weight": "2443"
+        },
+        {
+          "body_pre": "10663",
+          "body_post": "10051",
+          "weight": "2248"
+        }
+      ]
+    },
+    {
+      "file": "syn-partners-male-cns-v1.0-minconf-0.5.feather",
+      "rows": 311833243,
+      "columns": [
+        {
+          "name": "x_pre",
+          "type": "int32"
+        },
+        {
+          "name": "y_pre",
+          "type": "int32"
+        },
+        {
+          "name": "z_pre",
+          "type": "int32"
+        },
+        {
+          "name": "body_pre",
+          "type": "int64"
+        },
+        {
+          "name": "conf_pre",
+          "type": "float"
+        },
+        {
+          "name": "x_post",
+          "type": "int32"
+        },
+        {
+          "name": "y_post",
+          "type": "int32"
+        },
+        {
+          "name": "z_post",
+          "type": "int32"
+        },
+        {
+          "name": "body_post",
+          "type": "int64"
+        },
+        {
+          "name": "conf_post",
+          "type": "float"
+        },
+        {
+          "name": "primary_post",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        }
+      ],
+      "sample": [
+        {
+          "x_pre": "36730",
+          "y_pre": "27911",
+          "z_pre": "4169",
+          "body_pre": "476605880",
+          "conf_pre": "0.798",
+          "x_post": "36730",
+          "y_post": "27927",
+          "z_post": "4154",
+          "body_post": "339821567",
+          "conf_post": "0.759951",
+          "primary_post": "<unspecified>"
+        },
+        {
+          "x_pre": "36730",
+          "y_pre": "27911",
+          "z_pre": "4169",
+          "body_pre": "476605880",
+          "conf_pre": "0.798",
+          "x_post": "36746",
+          "y_post": "27919",
+          "z_post": "4170",
+          "body_post": "405401280",
+          "conf_post": "0.999553",
+          "primary_post": "<unspecified>"
+        },
+        {
+          "x_pre": "37603",
+          "y_pre": "28392",
+          "z_pre": "4451",
+          "body_pre": "323197229",
+          "conf_pre": "0.796",
+          "x_post": "37611",
+          "y_post": "28384",
+          "z_post": "4457",
+          "body_post": "428937197",
+          "conf_post": "1.0",
+          "primary_post": "<unspecified>"
+        }
+      ]
+    },
+    {
+      "file": "syn-points-male-cns-v1.0-minconf-0.5.feather",
+      "rows": 357489383,
+      "columns": [
+        {
+          "name": "z",
+          "type": "int32"
+        },
+        {
+          "name": "y",
+          "type": "int32"
+        },
+        {
+          "name": "x",
+          "type": "int32"
+        },
+        {
+          "name": "kind",
+          "type": "dictionary<values=string, indices=int8, ordered=0>"
+        },
+        {
+          "name": "conf",
+          "type": "float"
+        },
+        {
+          "name": "sv",
+          "type": "int64"
+        },
+        {
+          "name": "body",
+          "type": "int64"
+        },
+        {
+          "name": "compartment",
+          "type": "dictionary<values=string, indices=int8, ordered=0>"
+        },
+        {
+          "name": "major_label",
+          "type": "int8"
+        },
+        {
+          "name": "major",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "primary_label",
+          "type": "uint8"
+        },
+        {
+          "name": "primary",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "superprimary",
+          "type": "dictionary<values=string, indices=int8, ordered=0>"
+        },
+        {
+          "name": "superprimary_label",
+          "type": "uint8"
+        },
+        {
+          "name": "subprimary_label",
+          "type": "uint8"
+        },
+        {
+          "name": "subprimary",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "medulla_r_column_label",
+          "type": "int16"
+        },
+        {
+          "name": "medulla_r_column",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "lobula_r_column_label",
+          "type": "int16"
+        },
+        {
+          "name": "lobula_r_column",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "lobula_plate_r_column_label",
+          "type": "int16"
+        },
+        {
+          "name": "lobula_plate_r_column",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "medulla_r_layer_label",
+          "type": "int8"
+        },
+        {
+          "name": "medulla_r_layer",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "lobula_r_layer_label",
+          "type": "int8"
+        },
+        {
+          "name": "lobula_r_layer",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "lobula_plate_r_layer_label",
+          "type": "int8"
+        },
+        {
+          "name": "lobula_plate_r_layer",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "medulla_l_column_label",
+          "type": "int16"
+        },
+        {
+          "name": "medulla_l_column",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "lobula_l_column_label",
+          "type": "int16"
+        },
+        {
+          "name": "lobula_l_column",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "lobula_plate_l_column_label",
+          "type": "int16"
+        },
+        {
+          "name": "lobula_plate_l_column",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "medulla_l_layer_label",
+          "type": "int8"
+        },
+        {
+          "name": "medulla_l_layer",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "lobula_l_layer_label",
+          "type": "int8"
+        },
+        {
+          "name": "lobula_l_layer",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "lobula_plate_l_layer_label",
+          "type": "int8"
+        },
+        {
+          "name": "lobula_plate_l_layer",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "point_id",
+          "type": "uint64"
+        }
+      ],
+      "sample": [
+        {
+          "z": "4154",
+          "y": "27927",
+          "x": "36730",
+          "kind": "PostSyn",
+          "conf": "0.759951",
+          "sv": "339821567",
+          "body": "339821567",
+          "compartment": "unknown",
+          "major_label": "0",
+          "major": "<unspecified>",
+          "primary_label": "0",
+          "primary": "<unspecified>",
+          "superprimary": "<unspecified>",
+          "superprimary_label": "0",
+          "subprimary_label": "0",
+          "subprimary": "<unspecified>",
+          "medulla_r_column_label": "0",
+          "medulla_r_column": "<unspecified>",
+          "lobula_r_column_label": "0",
+          "lobula_r_column": "<unspecified>",
+          "lobula_plate_r_column_label": "0",
+          "lobula_plate_r_column": "<unspecified>",
+          "medulla_r_layer_label": "0",
+          "medulla_r_layer": "<unspecified>",
+          "lobula_r_layer_label": "0",
+          "lobula_r_layer": "<unspecified>",
+          "lobula_plate_r_layer_label": "0",
+          "lobula_plate_r_layer": "<unspecified>",
+          "medulla_l_column_label": "0",
+          "medulla_l_column": "<unspecified>",
+          "lobula_l_column_label": "0",
+          "lobula_l_column": "<unspecified>",
+          "lobula_plate_l_column_label": "0",
+          "lobula_plate_l_column": "<unspecified>",
+          "medulla_l_layer_label": "0",
+          "medulla_l_layer": "<unspecified>",
+          "lobula_l_layer_label": "0",
+          "lobula_l_layer": "<unspecified>",
+          "lobula_plate_l_layer_label": "0",
+          "lobula_plate_l_layer": "<unspecified>"
+        },
+        {
+          "z": "4169",
+          "y": "27911",
+          "x": "36730",
+          "kind": "PreSyn",
+          "conf": "0.798",
+          "sv": "476605880",
+          "body": "476605880",
+          "compartment": "unknown",
+          "major_label": "0",
+          "major": "<unspecified>",
+          "primary_label": "0",
+          "primary": "<unspecified>",
+          "superprimary": "<unspecified>",
+          "superprimary_label": "0",
+          "subprimary_label": "0",
+          "subprimary": "<unspecified>",
+          "medulla_r_column_label": "0",
+          "medulla_r_column": "<unspecified>",
+          "lobula_r_column_label": "0",
+          "lobula_r_column": "<unspecified>",
+          "lobula_plate_r_column_label": "0",
+          "lobula_plate_r_column": "<unspecified>",
+          "medulla_r_layer_label": "0",
+          "medulla_r_layer": "<unspecified>",
+          "lobula_r_layer_label": "0",
+          "lobula_r_layer": "<unspecified>",
+          "lobula_plate_r_layer_label": "0",
+          "lobula_plate_r_layer": "<unspecified>",
+          "medulla_l_column_label": "0",
+          "medulla_l_column": "<unspecified>",
+          "lobula_l_column_label": "0",
+          "lobula_l_column": "<unspecified>",
+          "lobula_plate_l_column_label": "0",
+          "lobula_plate_l_column": "<unspecified>",
+          "medulla_l_layer_label": "0",
+          "medulla_l_layer": "<unspecified>",
+          "lobula_l_layer_label": "0",
+          "lobula_l_layer": "<unspecified>",
+          "lobula_plate_l_layer_label": "0",
+          "lobula_plate_l_layer": "<unspecified>"
+        },
+        {
+          "z": "4170",
+          "y": "27919",
+          "x": "36746",
+          "kind": "PostSyn",
+          "conf": "0.999553",
+          "sv": "405401280",
+          "body": "405401280",
+          "compartment": "unknown",
+          "major_label": "0",
+          "major": "<unspecified>",
+          "primary_label": "0",
+          "primary": "<unspecified>",
+          "superprimary": "<unspecified>",
+          "superprimary_label": "0",
+          "subprimary_label": "0",
+          "subprimary": "<unspecified>",
+          "medulla_r_column_label": "0",
+          "medulla_r_column": "<unspecified>",
+          "lobula_r_column_label": "0",
+          "lobula_r_column": "<unspecified>",
+          "lobula_plate_r_column_label": "0",
+          "lobula_plate_r_column": "<unspecified>",
+          "medulla_r_layer_label": "0",
+          "medulla_r_layer": "<unspecified>",
+          "lobula_r_layer_label": "0",
+          "lobula_r_layer": "<unspecified>",
+          "lobula_plate_r_layer_label": "0",
+          "lobula_plate_r_layer": "<unspecified>",
+          "medulla_l_column_label": "0",
+          "medulla_l_column": "<unspecified>",
+          "lobula_l_column_label": "0",
+          "lobula_l_column": "<unspecified>",
+          "lobula_plate_l_column_label": "0",
+          "lobula_plate_l_column": "<unspecified>",
+          "medulla_l_layer_label": "0",
+          "medulla_l_layer": "<unspecified>",
+          "lobula_l_layer_label": "0",
+          "lobula_l_layer": "<unspecified>",
+          "lobula_plate_l_layer_label": "0",
+          "lobula_plate_l_layer": "<unspecified>"
+        }
+      ]
+    },
+    {
+      "file": "tbar-neurotransmitters-male-cns-v1.0.feather",
+      "rows": 45656140,
+      "columns": [
+        {
+          "name": "point_id",
+          "type": "uint64"
+        },
+        {
+          "name": "x",
+          "type": "int32"
+        },
+        {
+          "name": "y",
+          "type": "int32"
+        },
+        {
+          "name": "z",
+          "type": "int32"
+        },
+        {
+          "name": "conf",
+          "type": "float"
+        },
+        {
+          "name": "sv",
+          "type": "int64"
+        },
+        {
+          "name": "body",
+          "type": "int64"
+        },
+        {
+          "name": "major",
+          "type": "dictionary<values=string, indices=int8, ordered=1>"
+        },
+        {
+          "name": "primary",
+          "type": "dictionary<values=string, indices=int16, ordered=1>"
+        },
+        {
+          "name": "nt_acetylcholine_prob",
+          "type": "float"
+        },
+        {
+          "name": "nt_dopamine_prob",
+          "type": "float"
+        },
+        {
+          "name": "nt_gaba_prob",
+          "type": "float"
+        },
+        {
+          "name": "nt_glutamate_prob",
+          "type": "float"
+        },
+        {
+          "name": "nt_histamine_prob",
+          "type": "float"
+        },
+        {
+          "name": "nt_octopamine_prob",
+          "type": "float"
+        },
+        {
+          "name": "nt_serotonin_prob",
+          "type": "float"
+        },
+        {
+          "name": "split",
+          "type": "dictionary<values=string, indices=int8, ordered=0>"
+        }
+      ],
+      "sample": [
+        {
+          "point_id": "18335514438438778",
+          "x": "36730",
+          "y": "27911",
+          "z": "4169",
+          "conf": "0.798",
+          "sv": "476605880",
+          "body": "476605880",
+          "major": "<unspecified>",
+          "primary": "<unspecified>",
+          "nt_acetylcholine_prob": "0.124599926",
+          "nt_dopamine_prob": "0.0001231441",
+          "nt_gaba_prob": "0.043268688",
+          "nt_glutamate_prob": "0.03390593",
+          "nt_histamine_prob": "0.197582",
+          "nt_octopamine_prob": "0.012159353",
+          "nt_serotonin_prob": "0.58836097",
+          "split": NaN
+        },
+        {
+          "point_id": "19575764563301091",
+          "x": "37603",
+          "y": "28392",
+          "z": "4451",
+          "conf": "0.796",
+          "sv": "323197229",
+          "body": "323197229",
+          "major": "<unspecified>",
+          "primary": "<unspecified>",
+          "nt_acetylcholine_prob": "0.055567987",
+          "nt_dopamine_prob": "0.004835431",
+          "nt_gaba_prob": "0.08693849",
+          "nt_glutamate_prob": "0.14393935",
+          "nt_histamine_prob": "0.57196224",
+          "nt_octopamine_prob": "0.12123504",
+          "nt_serotonin_prob": "0.0155215",
+          "split": NaN
+        },
+        {
+          "point_id": "19958388054069316",
+          "x": "36932",
+          "y": "25266",
+          "z": "4538",
+          "conf": "0.902",
+          "sv": "207675855",
+          "body": "207675855",
+          "major": "<unspecified>",
+          "primary": "<unspecified>",
+          "nt_acetylcholine_prob": "0.13483441",
+          "nt_dopamine_prob": "0.00024262074",
+          "nt_gaba_prob": "0.087383874",
+          "nt_glutamate_prob": "0.116710015",
+          "nt_histamine_prob": "0.64553326",
+          "nt_octopamine_prob": "0.007199871",
+          "nt_serotonin_prob": "0.008095952",
+          "split": NaN
+        }
+      ]
+    }
+  ]
+}
