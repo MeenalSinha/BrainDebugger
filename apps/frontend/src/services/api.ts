@@ -16,12 +16,14 @@ export const api = {
     request<Neuron[]>(`/api/neurons/search?q=${encodeURIComponent(query)}&region=${encodeURIComponent(region)}&limit=${limit}`),
   neuron: (id: string) => request<Neuron>(`/api/neurons/${id}`),
   statistics: (id: string) => request<Statistics>(`/api/neurons/${id}/statistics`),
-  incoming: (id: string, page = 1, search = '') =>
-    request<Connection[]>(`/api/neurons/${id}/incoming?page=${page}&page_size=25&search=${encodeURIComponent(search)}`),
-  outgoing: (id: string, page = 1, search = '') =>
-    request<Connection[]>(`/api/neurons/${id}/outgoing?page=${page}&page_size=25&search=${encodeURIComponent(search)}`),
+  incoming: (id: string, page = 1, search = '', sort = 'weight_desc') =>
+    request<Connection[]>(`/api/neurons/${id}/incoming?page=${page}&page_size=25&search=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`),
+  outgoing: (id: string, page = 1, search = '', sort = 'weight_desc') =>
+    request<Connection[]>(`/api/neurons/${id}/outgoing?page=${page}&page_size=25&search=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`),
   neighborhood: (id: string, direction: string, maxNodes: number) =>
     request<Neighborhood>(`/api/neurons/${id}/neighborhood?direction=${direction}&max_nodes=${maxNodes}`),
   connection: (source: number, target: number) => request<Connection>(`/api/connections/${source}/${target}`),
-  exportUrl: (id: string, format: string) => `/api/neurons/${id}/export?format=${format}`
+  exportUrl: (id: string, format: string) => `/api/neurons/${id}/export?format=${format}`,
+  connectionsExportUrl: (id: string, direction: 'incoming' | 'outgoing', search = '', sort = 'weight_desc') =>
+    `/api/neurons/${id}/connections/${direction}/export?search=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`
 };

@@ -51,11 +51,22 @@ def test_connections_and_neighborhood() -> None:
     assert "nodes" in neighborhood.json()["data"]
 
 
+def test_connection_sort_validation_and_csv_export() -> None:
+    neuron_id = first_neuron_id()
+    invalid = client.get(f"/api/neurons/{neuron_id}/incoming?sort=unsupported")
+    exported = client.get(f"/api/neurons/{neuron_id}/connections/incoming/export")
+    assert invalid.status_code == 422
+    assert exported.status_code == 200
+    assert "source,target,weight" in exported.text
+    assert "Content-Disposition" in exported.headers
+
+
 def test_export_markdown() -> None:
     neuron_id = first_neuron_id()
     response = client.get(f"/api/neurons/{neuron_id}/export?format=markdown")
     assert response.status_code == 200
     assert "Scientific Limitations" in response.text
+    assert "Content-Disposition" in response.headers
 
 
 def test_invalid_neuron() -> None:
