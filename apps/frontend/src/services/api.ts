@@ -12,8 +12,8 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<ApiRespon
 export const api = {
   summary: (signal?: AbortSignal) => request<DatasetSummary>('/api/dataset/summary', signal),
   regions: (signal?: AbortSignal) => request<Region[]>('/api/regions', signal),
-  search: (query: string, region = '', limit = 25, signal?: AbortSignal) =>
-    request<Neuron[]>(`/api/neurons/search?q=${encodeURIComponent(query)}&region=${encodeURIComponent(region)}&limit=${limit}`, signal),
+  search: (query: string, region = '', cellType = '', limit = 25, signal?: AbortSignal) =>
+    request<Neuron[]>(`/api/neurons/search?q=${encodeURIComponent(query)}&region=${encodeURIComponent(region)}&cell_type=${encodeURIComponent(cellType)}&limit=${limit}`, signal),
   neuron: (id: string, signal?: AbortSignal) => request<Neuron>(`/api/neurons/${id}`, signal),
   statistics: (id: string, signal?: AbortSignal) => request<Statistics>(`/api/neurons/${id}/statistics`, signal),
   incoming: (id: string, page = 1, search = '', sort = 'weight_desc', signal?: AbortSignal) =>

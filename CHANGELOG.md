@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Split graph, connection table, inspector, region explorer, demo controls, history, and explorer controls into feature modules.
+- Added exact cell-type filtering to the explorer UI and API client.
+- Made every indexed region available in the Region Explorer.
+- Added Vitest component/API coverage and a Playwright explorer smoke test.
+- Verified the frontend production build with Vite's runner config loader.
+
 ## 1.1.0
 
 - Added lightweight indexed neuron search while preserving current query semantics.

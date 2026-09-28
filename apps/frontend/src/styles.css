@@ -23,6 +23,15 @@ select {
   font: inherit;
 }
 
+.filter-input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  padding: 7px 9px;
+}
+
 button,
 a {
   border-radius: 6px;
@@ -581,6 +590,19 @@ th {
 .region-card span {
   color: #64748b;
   font-size: 12px;
+}
+
+.region-card.active {
+  border-color: #0f766e;
+  box-shadow: inset 3px 0 0 #0f766e;
+}
+
+.region-count {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
 }
 
 .scope-panel {

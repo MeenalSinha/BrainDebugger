@@ -25,7 +25,8 @@ BrainDebugger is an exploratory structural-connectivity tool. It does not simula
 - Neuron Inspector with metadata, connectivity summary, structural graph metrics, provenance, and export actions.
 - Incoming and outgoing connection tables with sorting, filtering, pagination, clickable neuron IDs, and full filtered CSV export.
 - Cytoscape local neighborhood graph with hard bounded node counts, direction filters, selected edge inspection, and a structural-weight legend.
-- Region explorer cards and compact selected-region details with top cell types and representative neurons.
+- Region explorer with all indexed regions, compact selected-region details, top cell types, and representative neurons.
+- Search filters for free-text matching, region, and exact cell type.
 - Export formats: Markdown, JSON, neuron CSV, and connection CSV.
 - Reproducible schema audit and preprocessing scripts.
 
@@ -105,7 +106,16 @@ cd apps\frontend
 .\node_modules\.bin\tsc.cmd --noEmit --incremental false
 ```
 
-In this sandbox, direct production build verification can be blocked by local `pnpm` store permissions. In a normal shell, run `pnpm install` followed by `pnpm run build`.
+Frontend unit tests and production build:
+
+```powershell
+cd apps\frontend
+pnpm test
+pnpm build
+pnpm test:e2e
+```
+
+The project uses Vite's runner config loader so these commands work in restricted shells that cannot bundle the configuration through esbuild.
 
 ## Performance Notes
 

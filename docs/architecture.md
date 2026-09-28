@@ -27,7 +27,7 @@ Safeguards include:
 
 ## Frontend
 
-The frontend is React + TypeScript + Vite with Cytoscape for local graph rendering. v1.1 begins a feature-oriented split by moving reusable display pieces into `components/` and `features/`. Request flows use `AbortController` and sequence guards for search, neuron opening, table reloads, and graph reloads so stale responses do not overwrite newer UI state.
+The frontend is React + TypeScript + Vite with Cytoscape for local graph rendering. Feature modules own the graph, connection tables, inspector, region explorer, explorer controls, demo controls, history, landing, and scientific-scope content. `main.tsx` coordinates application state and request flows. Request flows use `AbortController` and sequence guards for search, neuron opening, table reloads, and graph reloads so stale responses do not overwrite newer UI state.
 
 ## Future Compatibility
 

@@ -1,6 +1,9 @@
 .venv/
 node_modules/
+.pnpm-store/
 dist/
+apps/frontend/test-results/
+apps/frontend/playwright-report/
 .pytest_cache/
 __pycache__/
 *.pyc
