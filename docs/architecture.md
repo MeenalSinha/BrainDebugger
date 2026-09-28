@@ -1,11 +1,34 @@
 # Architecture
 
-BrainDebugger uses a two-app architecture.
+BrainDebugger uses a two-app architecture with an offline preprocessing pipeline.
 
 ```text
-React UI -> Vite proxy -> FastAPI API -> in-memory ConnectomeStore -> data/demo/index.json
+MaleCNS Feather downloads
+  -> scripts/inspect_dataset.py
+  -> scripts/preprocess_data.py
+  -> data/demo/index.json
+  -> FastAPI API
+  -> React/Vite/Cytoscape UI
 ```
 
 The preprocessing scripts are intentionally separate from the request path. This keeps the API responsive and avoids full-dataset scans during interactive use.
 
-Future pathway tracing and perturbation modules can extend `ConnectomeStore` or replace the JSON index with DuckDB/PostgreSQL without changing the frontend API contract.
+## Backend
+
+`ConnectomeStore` loads the demo JSON index once, enriches directed connections with neuron metadata, builds incoming/outgoing adjacency lists, and creates a lightweight normalized-token search index. API routes return consistent `{ data, metadata }` envelopes for interactive reads, while export routes return typed file responses with download filenames.
+
+Safeguards include:
+
+- explicit demo-subset metadata;
+- supported-sort validation;
+- hard `max_nodes` enforcement for graph neighborhoods;
+- connection CSV export of all matching filtered rows;
+- lazy dataset loading if app startup hooks have not run.
+
+## Frontend
+
+The frontend is React + TypeScript + Vite with Cytoscape for local graph rendering. v1.1 begins a feature-oriented split by moving reusable display pieces into `components/` and `features/`. Request flows use `AbortController` and sequence guards for search, neuron opening, table reloads, and graph reloads so stale responses do not overwrite newer UI state.
+
+## Future Compatibility
+
+Future multi-hop tracing, saved investigations, and perturbation modules can extend `ConnectomeStore` or replace the JSON index with DuckDB/PostgreSQL without changing the high-level frontend API contract.

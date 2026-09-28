@@ -27,7 +27,7 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     audit = {
         "dataset": "Janelia MaleCNS v1.0",
-        "raw_dir": str(RAW_DIR),
+        "raw_dir": "external-download:outputs/malecns-connectome",
         "files": [inspect_file(path) for path in sorted(RAW_DIR.glob("*.feather"))],
     }
     OUT.write_text(json.dumps(audit, indent=2), encoding="utf-8")

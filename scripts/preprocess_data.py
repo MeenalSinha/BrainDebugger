@@ -14,7 +14,7 @@ import pyarrow.ipc as ipc
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_DIR = Path(os.environ.get("MALECNS_RAW_DIR", ROOT.parent / "outputs" / "malecns-connectome"))
+RAW_DIR = Path(os.environ.get("MALECNS_RAW_DIR", ROOT.parent / "malecns-connectome"))
 OUT_DIR = ROOT / "data" / "demo"
 PROCESSED_DIR = ROOT / "data" / "processed"
 
@@ -26,6 +26,7 @@ WEIGHTS = RAW_DIR / "connectome-weights-male-cns-v1.0-minconf-0.5.feather"
 SEED_COUNT = int(os.environ.get("BRAINDEBUGGER_SEED_COUNT", "650"))
 TOP_K_PER_DIRECTION = int(os.environ.get("BRAINDEBUGGER_TOP_K", "80"))
 STATS_ROWS = int(os.environ.get("BRAINDEBUGGER_STATS_ROWS", "25000"))
+SEED_SELECTION = "lowest-body-stats-rank-then-body-id"
 
 
 def clean(value: Any) -> Any:
@@ -52,6 +53,27 @@ def read_stats() -> pd.DataFrame:
                 break
     frame = pd.concat(parts, ignore_index=True).head(STATS_ROWS)
     return frame.drop_duplicates("body")
+
+
+def select_seed_bodies() -> tuple[set[int], int]:
+    """Select the globally lowest-ranked bodies without loading all statistics at once."""
+    ranked: list[tuple[int, int]] = []
+    rows_scanned = 0
+    with ipc.open_file(BODY_STATS) as reader:
+        for batch_idx in range(reader.num_record_batches):
+            frame = reader.get_batch(batch_idx).to_pandas()[["body", "rank"]]
+            rows_scanned += len(frame)
+            for row in frame.itertuples(index=False):
+                body = int(row.body)
+                rank = int(row.rank)
+                candidate = (-rank, -body)
+                if len(ranked) < SEED_COUNT:
+                    heapq.heappush(ranked, candidate)
+                elif candidate > ranked[0]:
+                    heapq.heapreplace(ranked, candidate)
+            if batch_idx % 250 == 0:
+                print(f"Scanned statistics batch {batch_idx + 1}/{reader.num_record_batches}", flush=True)
+    return {-body for _, body in ranked}, rows_scanned
 
 
 def read_annotations(bodies: set[int]) -> dict[int, dict[str, Any]]:
@@ -157,7 +179,7 @@ def main() -> None:
         path.mkdir(parents=True, exist_ok=True)
 
     stats = read_stats()
-    seed_bodies = set(int(body) for body in stats.head(SEED_COUNT)["body"].tolist())
+    seed_bodies, stats_rows_scanned = select_seed_bodies()
     annotations = read_annotations(seed_bodies)
     neurotransmitters = read_neurotransmitters(seed_bodies)
     edges = scan_weights(seed_bodies)
@@ -250,12 +272,15 @@ def main() -> None:
             "dataset": "Janelia MaleCNS v1.0",
             "mode": "demo-subset",
             "indexedAt": datetime.now(timezone.utc).isoformat(),
-            "rawPath": str(RAW_DIR),
+            "rawPath": "external-download:outputs/malecns-connectome",
             "indexedNeurons": len(neurons),
             "indexedConnections": len(edges),
             "availableRegions": len(regions),
             "seedCount": SEED_COUNT,
+            "statsRowsScannedForSeeds": stats_rows_scanned,
+            "seedSelection": SEED_SELECTION,
             "topKPerDirection": TOP_K_PER_DIRECTION,
+            "connectionScope": "For each deterministic seed body, the demo index keeps the strongest incoming and outgoing connections found in the complete weights file, bounded by topKPerDirection.",
             "sourceRows": {
                 "bodyAnnotations": 211577,
                 "bodyNeurotransmitters": 1835518,

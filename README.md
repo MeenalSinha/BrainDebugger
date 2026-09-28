@@ -2,7 +2,7 @@
 
 Developer tools for exploring biological neural networks.
 
-BrainDebugger v1.0 turns the Janelia MaleCNS Drosophila connectome release into a focused connectome explorer. It is built for neuron search, metadata inspection, incoming/outgoing connection review, local graph visualization, region browsing, structural graph statistics, and exportable neuron reports.
+BrainDebugger turns the Janelia MaleCNS Drosophila connectome release into a focused structural-connectivity explorer. It is built for neuron search, metadata inspection, incoming/outgoing connection review, local graph visualization, region browsing, structural graph statistics, demo workflows, and exportable reports.
 
 ## Why It Exists
 
@@ -15,17 +15,18 @@ BrainDebugger is an exploratory structural-connectivity tool. It does not simula
 - Synapse counts are graph measurements, not automatic physiological signal strengths.
 - Predicted neurotransmitters do not necessarily establish excitatory or inhibitory effects.
 - A graph path is a computational exploration route, not a validated biological signal pathway.
-- v1.0 uses a real demo subset indexed from the downloaded MaleCNS Feather files for fast local interaction.
+- The bundled index is a real MaleCNS-derived demo subset for fast local interaction, not the full connectome.
+- Structural metrics are computed over the indexed subset unless a route explicitly says otherwise.
 
 ## Features
 
 - Landing overview with dataset status, indexed neuron count, connection count, regions, and indexing timestamp.
-- Neuron search by ID, cell type, region, neurotransmitter, and annotations.
+- Indexed neuron search by ID, partial ID, cell type, instance, region, superclass, neurotransmitter, and annotations represented in the demo index.
 - Neuron Inspector with metadata, connectivity summary, structural graph metrics, provenance, and export actions.
-- Incoming and outgoing connection tables with clickable neuron IDs.
-- Cytoscape local neighborhood graph with bounded node counts, direction filters, and selected edge inspection.
-- Region explorer cards with neuron and indexed connection counts.
-- Export formats: Markdown, JSON, and CSV.
+- Incoming and outgoing connection tables with sorting, filtering, pagination, clickable neuron IDs, and full filtered CSV export.
+- Cytoscape local neighborhood graph with hard bounded node counts, direction filters, selected edge inspection, and a structural-weight legend.
+- Region explorer cards and compact selected-region details with top cell types and representative neurons.
+- Export formats: Markdown, JSON, neuron CSV, and connection CSV.
 - Reproducible schema audit and preprocessing scripts.
 
 ## Architecture
@@ -54,7 +55,7 @@ The downloaded flat-connectome files used here include:
 - `syn-partners-male-cns-v1.0-minconf-0.5.feather`
 - `tbar-neurotransmitters-male-cns-v1.0.feather`
 
-The bundled `data/demo/index.json` was generated from real MaleCNS files and currently contains 36,278 neurons and 99,884 weighted connections.
+The bundled `data/demo/index.json` was generated from real MaleCNS files and currently contains 36,278 neurons and 99,884 weighted connections. The seed set is deterministic (`lowest-body-stats-rank-then-body-id`) across the complete body-statistics file, and each seed keeps a bounded set of strongest incoming/outgoing weighted connections from the complete weights file. This design keeps the portfolio demo responsive while making the subset scope explicit.
 
 ## Run Locally
 
@@ -87,6 +88,7 @@ Open http://127.0.0.1:5173.
 - `GET /api/neurons/{neuron_id}`
 - `GET /api/neurons/{neuron_id}/incoming`
 - `GET /api/neurons/{neuron_id}/outgoing`
+- `GET /api/neurons/{neuron_id}/connections/{incoming|outgoing}/export`
 - `GET /api/neurons/{neuron_id}/neighborhood?direction=both&max_nodes=50`
 - `GET /api/connections/{source_id}/{target_id}`
 - `GET /api/neurons/{neuron_id}/statistics`
@@ -94,7 +96,7 @@ Open http://127.0.0.1:5173.
 
 ## Testing
 
-Backend smoke verification was run against the real demo index for health, summary, search, detail, statistics, incoming/outgoing, neighborhood, and Markdown export endpoints.
+Backend tests run against the real demo index for health, summary, search, detail, statistics, incoming/outgoing, sorting, filtering, pagination, hard neighborhood node limits, connection export completeness, Markdown export, and invalid-neuron handling.
 
 Frontend TypeScript verification:
 
@@ -103,9 +105,11 @@ cd apps\frontend
 .\node_modules\.bin\tsc.cmd --noEmit --incremental false
 ```
 
+In this sandbox, direct production build verification can be blocked by local `pnpm` store permissions. In a normal shell, run `pnpm install` followed by `pnpm run build`.
+
 ## Performance Notes
 
-The UI intentionally renders local neighborhoods only. The preprocessing pipeline scans the large weights table once and stores bounded strongest connections per seed neuron for demo mode. Point-level synapse tables remain available as raw source data but are not loaded into the browser.
+The UI intentionally renders local neighborhoods only. The API builds a lightweight normalized-token search index at startup, rejects unsupported connection sorts, enforces hard graph node limits, and exports all matching filtered connection rows. The preprocessing pipeline scans the large weights table once and stores bounded strongest connections per seed neuron for demo mode. Point-level synapse tables remain available as raw source data but are not loaded into the browser.
 
 ## Roadmap
 

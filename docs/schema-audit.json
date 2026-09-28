@@ -1,6 +1,6 @@
 {
   "dataset": "Janelia MaleCNS v1.0",
-  "raw_dir": "C:\\Users\\Meenal Sinha\\Documents\\Codex\\2026-09-19\\https-male-cns-janelia-org-download\\outputs\\malecns-connectome",
+  "raw_dir": "external-download:outputs/malecns-connectome",
   "files": [
     {
       "file": "body-annotations-male-cns-v1.0-minconf-0.5.feather",

@@ -129,7 +129,7 @@ def export_connections(
     if not store.get_neuron(neuron_id):
         raise HTTPException(status_code=404, detail="Neuron ID was not found in the indexed dataset.")
     try:
-        rows, _ = store.connection_rows(neuron_id, direction, page=1, page_size=100, search=search, sort=sort)
+        rows = store.all_connection_rows(neuron_id, direction, search=search, sort=sort)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     filename = f"braindebugger-{neuron_id}-{direction}-connections.csv"

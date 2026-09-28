@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import statistics
 import time
 from collections import defaultdict
@@ -11,6 +12,11 @@ from typing import Any
 
 
 VALID_CONNECTION_SORTS = {"weight_desc", "weight_asc", "source_region", "target_region", "neuron_id"}
+SEARCH_FIELDS = ("id", "cellType", "instance", "region", "superclass", "predictedNt")
+
+
+def normalize_search(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
 
 class ConnectomeStore:
@@ -22,6 +28,9 @@ class ConnectomeStore:
         self.regions: list[dict[str, Any]] = []
         self.incoming: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self.outgoing: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        self.search_documents: dict[str, str] = {}
+        self.search_tokens: dict[str, set[str]] = defaultdict(set)
+        self.search_ngrams: dict[str, set[str]] = defaultdict(set)
         self.loaded_at = 0.0
 
     def load(self) -> None:
@@ -41,30 +50,61 @@ class ConnectomeStore:
         for collection in (self.incoming, self.outgoing):
             for edges in collection.values():
                 edges.sort(key=lambda edge: edge["weight"], reverse=True)
+        self.build_search_index()
         self.loaded_at = time.perf_counter() - started
 
     def dataset_summary(self) -> dict[str, Any]:
-        return {**self.summary, "apiIndexLoadSeconds": round(self.loaded_at, 3)}
+        return {
+            **self.summary,
+            "apiIndexLoadSeconds": round(self.loaded_at, 3),
+            "searchIndex": {
+                "strategy": "normalized-token-and-trigram-prefilter-with-substring-match",
+                "fields": list(SEARCH_FIELDS),
+                "documents": len(self.search_documents),
+            },
+        }
+
+    def build_search_index(self) -> None:
+        self.search_documents.clear()
+        self.search_tokens.clear()
+        self.search_ngrams.clear()
+        for neuron in self.neurons.values():
+            neuron_id = str(neuron["id"])
+            values = [neuron.get(field) for field in SEARCH_FIELDS]
+            document = normalize_search(" ".join(str(value or "") for value in values))
+            self.search_documents[neuron_id] = document
+            for token in set(re.findall(r"[a-z0-9_.:-]+", document)):
+                prefixes = {token[:idx] for idx in range(1, min(len(token), 12) + 1)}
+                for prefix in prefixes:
+                    self.search_tokens[prefix].add(neuron_id)
+                for start in range(max(0, len(token) - 2)):
+                    self.search_ngrams[token[start : start + 3]].add(neuron_id)
 
     def get_neuron(self, neuron_id: str) -> dict[str, Any] | None:
         return self.neurons.get(str(neuron_id))
 
     def search(self, query: str = "", region: str | None = None, cell_type: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
-        query = query.strip().lower()
+        query = normalize_search(query)
+        candidate_ids: list[str]
+        if query:
+            tokens = re.findall(r"[a-z0-9_.:-]+", query)
+            if tokens and any(len(token) >= 3 for token in tokens):
+                candidates: set[str] | None = None
+                for token in tokens:
+                    if len(token) < 3:
+                        continue
+                    for start in range(len(token) - 2):
+                        ids = self.search_ngrams.get(token[start : start + 3], set())
+                        candidates = set(ids) if candidates is None else candidates & ids
+                candidate_ids = sorted(candidates or [], key=lambda item: int(item) if item.isdigit() else item)
+            else:
+                candidate_ids = list(self.neurons)
+        else:
+            candidate_ids = list(self.neurons)
         results = []
-        for neuron in self.neurons.values():
-            haystack = " ".join(
-                str(value or "")
-                for value in (
-                    neuron["id"],
-                    neuron.get("cellType"),
-                    neuron.get("instance"),
-                    neuron.get("region"),
-                    neuron.get("superclass"),
-                    neuron.get("predictedNt"),
-                )
-            ).lower()
-            if query and query not in haystack:
+        for neuron_id in candidate_ids:
+            neuron = self.neurons[neuron_id]
+            if query and query not in self.search_documents.get(neuron_id, ""):
                 continue
             if region and neuron.get("region") != region:
                 continue
@@ -124,6 +164,10 @@ class ConnectomeStore:
         start = max(page - 1, 0) * page_size
         return rows[start : start + page_size], total
 
+    def all_connection_rows(self, neuron_id: str, direction: str, search: str = "", sort: str = "weight_desc") -> list[dict[str, Any]]:
+        rows, total = self.connection_rows(neuron_id, direction, page=1, page_size=max(1, len(self.connections)), search=search, sort=sort)
+        return rows[:total]
+
     def enrich_edge(self, edge: dict[str, Any]) -> dict[str, Any]:
         source = self.neurons.get(str(edge["source"]), {})
         target = self.neurons.get(str(edge["target"]), {})
@@ -158,20 +202,23 @@ class ConnectomeStore:
         nodes = {center}
         selected_edges = []
         for edge in edge_pool:
-            if len(nodes) >= max_nodes and str(edge["source"]) not in nodes and str(edge["target"]) not in nodes:
+            source = str(edge["source"])
+            target = str(edge["target"])
+            needed = {source, target} - nodes
+            if len(nodes) + len(needed) > max_nodes:
                 continue
-            nodes.add(str(edge["source"]))
-            nodes.add(str(edge["target"]))
+            nodes.update(needed)
             selected_edges.append(self.enrich_edge(edge))
             if len(nodes) >= max_nodes:
                 break
+        available_nodes = {center} | {str(e["source"]) for e in edge_pool} | {str(e["target"]) for e in edge_pool}
 
         return {
             "nodes": [self.compact_neuron(self.neurons[node]) for node in nodes if node in self.neurons],
             "edges": selected_edges,
             "showing": len(nodes),
-            "available": len({center} | {str(e["source"]) for e in edge_pool} | {str(e["target"]) for e in edge_pool}),
-            "truncated": len(nodes) < len({center} | {str(e["source"]) for e in edge_pool} | {str(e["target"]) for e in edge_pool}),
+            "available": len(available_nodes),
+            "truncated": len(nodes) < len(available_nodes),
         }
 
     def statistics(self, neuron_id: str) -> dict[str, Any] | None:

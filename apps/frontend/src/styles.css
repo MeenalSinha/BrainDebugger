@@ -343,6 +343,41 @@ select {
   height: 520px;
 }
 
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border-top: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.graph-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-node {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #64748b;
+}
+
+.legend-node.selected {
+  background: #0f766e;
+  box-shadow: 0 0 0 2px #99f6e4;
+}
+
+.legend-edge {
+  width: 28px;
+  height: 2px;
+  background: #94a3b8;
+}
+
 .truncate-note,
 .error {
   padding: 10px 12px;
@@ -500,6 +535,40 @@ th {
   padding: 12px;
 }
 
+.region-detail {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) repeat(2, minmax(120px, 0.8fr)) minmax(160px, 1fr) minmax(160px, 1fr);
+  gap: 10px;
+  padding: 0 12px 12px;
+  align-items: stretch;
+}
+
+.region-detail > div:first-child,
+.region-cell-types {
+  padding: 12px;
+  border: 1px solid #d7dee8;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.region-detail > div:first-child,
+.region-cell-types {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+}
+
+.region-detail span,
+.region-cell-types span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.region-cell-types button {
+  text-align: left;
+  padding: 6px 8px;
+}
+
 .region-card {
   min-height: 92px;
   display: grid;
@@ -548,7 +617,8 @@ th {
   }
 
   .overview-grid,
-  .region-grid {
+  .region-grid,
+  .region-detail {
     grid-template-columns: 1fr;
   }
 

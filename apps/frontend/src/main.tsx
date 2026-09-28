@@ -1,7 +1,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowDownToLine, Database, Download, Info, Network, Search, Settings2, Split, X } from 'lucide-react';
+import { Activity, ArrowDownToLine, Database, Download, Network, Search, Settings2, Split, X } from 'lucide-react';
 import cytoscape from 'cytoscape';
+import { Stat } from './components/Stat';
+import { Landing } from './features/landing/Landing';
+import { ScopePanel } from './features/science/ScopePanel';
 import { api } from './services/api';
 import { useDebouncedValue } from './lib/useDebouncedValue';
 import type { Connection, DatasetSummary, Neighborhood, Neuron, Region, Statistics } from './types/connectome';
@@ -9,54 +12,9 @@ import './styles.css';
 
 type ConnectionSort = 'weight_desc' | 'weight_asc' | 'source_region' | 'target_region' | 'neuron_id';
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="stat">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function ScopePanel() {
-  return (
-    <section className="scope-panel">
-      <div className="section-title"><Info size={15} /> Scientific Scope & Limitations</div>
-      <p>BrainDebugger v1.0 explores graph-based structural connectivity in the Janelia MaleCNS dataset.</p>
-      <ul>
-        <li>Synapse counts are not automatically physiological signal strengths.</li>
-        <li>Predicted neurotransmitters do not necessarily establish excitatory or inhibitory effects.</li>
-        <li>Graph paths are computational exploration aids, not validated biological signal routes.</li>
-      </ul>
-    </section>
-  );
-}
-
-function Landing({ summary, onStart }: { summary: DatasetSummary | null; onStart: () => void }) {
-  return (
-    <div className="landing">
-      <div className="landing-copy">
-        <div className="eyebrow"><Database size={16} /> Janelia MaleCNS v1.0</div>
-        <h1>Explore the hidden wiring of a biological neural network.</h1>
-        <p>
-          BrainDebugger lets you inspect neurons, explore synaptic relationships, and understand connectome structure through
-          an interface inspired by developer tools.
-        </p>
-        <button className="primary-action" onClick={onStart}><Search size={18} /> Start Exploring</button>
-      </div>
-      <div className="overview-grid">
-        <Stat label="Indexed neurons" value={summary ? summary.indexedNeurons.toLocaleString() : 'Loading'} />
-        <Stat label="Indexed connections" value={summary ? summary.indexedConnections.toLocaleString() : 'Loading'} />
-        <Stat label="Available regions" value={summary ? summary.availableRegions.toLocaleString() : 'Loading'} />
-        <Stat label="Data status" value={summary?.mode ?? 'Loading'} />
-        <Stat label="Last indexed" value={summary ? new Date(summary.indexedAt).toLocaleString() : 'Loading'} />
-        <Stat label="API index load" value={summary ? `${summary.apiIndexLoadSeconds}s` : 'Loading'} />
-      </div>
-      <div className="workflow">
-        <span>Search a neuron</span><b>↓</b><span>Inspect connections</span><b>↓</b><span>Explore local network</span><b>↓</b><span>Understand structural role</span>
-      </div>
-    </div>
-  );
+function isAbortError(error: unknown) {
+  return (error instanceof DOMException && error.name === 'AbortError')
+    || (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError');
 }
 
 function GraphView({
@@ -110,11 +68,16 @@ function GraphView({
     <div className="graph-shell">
       <div className="graph-toolbar">
         <span><Network size={15} /> Local Neighborhood</span>
-        <button onClick={() => cyRef.current?.fit(undefined, 36)}>Fit</button>
-        <button onClick={() => cyRef.current?.layout({ name: 'cose', animate: true, fit: true, padding: 36 }).run()}>Reset</button>
+        <button aria-label="Fit graph to view" onClick={() => cyRef.current?.fit(undefined, 36)}>Fit</button>
+        <button aria-label="Reset graph layout" onClick={() => cyRef.current?.layout({ name: 'cose', animate: true, fit: true, padding: 36 }).run()}>Reset</button>
       </div>
       <div className="graph-canvas" ref={containerRef}>
         {!neighborhood && <div className="empty-state">Select a neuron to render its local structural neighborhood.</div>}
+      </div>
+      <div className="graph-legend" aria-label="Graph legend">
+        <span><i className="legend-node selected" /> Selected neuron</span>
+        <span><i className="legend-node" /> Connected neuron</span>
+        <span><i className="legend-edge" /> Source {'->'} target structural synapse count</span>
       </div>
       {neighborhood?.truncated && <div className="truncate-note">Showing {neighborhood.showing} of {neighborhood.available.toLocaleString()} connected neurons.</div>}
     </div>
@@ -218,25 +181,30 @@ function Inspector({ neuron, stats, connection }: { neuron: Neuron | null; stats
         <code>{neuron.id}</code>
       </div>
       <div className="inspector-section">
-        <h3>Overview</h3>
+        <h3>Identity</h3>
+        <Stat label="Neuron ID" value={neuron.id} />
+        <Stat label="Status" value={neuron.status || 'unknown'} />
+      </div>
+      <div className="inspector-section">
+        <h3>Classification</h3>
         <Stat label="Cell type" value={neuron.cellType || 'unclassified'} />
         <Stat label="Brain region" value={neuron.region || 'unclassified'} />
         <Stat label="Hemisphere" value={neuron.hemisphere || 'unknown'} />
-        <Stat label="Predicted neurotransmitter" value={neuron.predictedNt || 'unknown'} />
+        <Stat label="Predicted NT annotation" value={neuron.predictedNt || 'unknown'} />
       </div>
       <div className="inspector-section">
-        <h3>Connectivity</h3>
+        <h3>Dataset Connectivity</h3>
         <Stat label="Incoming partners" value={neuron.incomingPartners?.toLocaleString()} />
         <Stat label="Outgoing partners" value={neuron.outgoingPartners?.toLocaleString()} />
-        <Stat label="Incoming synapse count" value={(neuron.totalIncomingWeight ?? 0).toLocaleString()} />
-        <Stat label="Outgoing synapse count" value={(neuron.totalOutgoingWeight ?? 0).toLocaleString()} />
+        <Stat label="Incoming structural weight" value={(neuron.totalIncomingWeight ?? 0).toLocaleString()} />
+        <Stat label="Outgoing structural weight" value={(neuron.totalOutgoingWeight ?? 0).toLocaleString()} />
       </div>
       {stats && (
         <div className="inspector-section">
-          <h3>Structural Graph Metrics</h3>
+          <h3 title="Computed over connections present in the indexed demo subset.">Computed Structural Metrics</h3>
           <Stat label="Total degree" value={stats.totalDegree} />
-          <Stat label="Average weight" value={stats.averageConnectionWeight} />
-          <Stat label="Maximum weight" value={stats.maxConnectionWeight.toLocaleString()} />
+          <Stat label="Average structural weight" value={stats.averageConnectionWeight} />
+          <Stat label="Maximum structural weight" value={stats.maxConnectionWeight.toLocaleString()} />
           <Stat label="Connected regions" value={stats.uniqueConnectedRegions} />
         </div>
       )}
@@ -292,44 +260,69 @@ function App() {
   const [searchLoading, setSearchLoading] = React.useState(false);
   const [neuronLoading, setNeuronLoading] = React.useState(false);
   const debouncedQuery = useDebouncedValue(query, 250);
+  const neuronRequestSeq = React.useRef(0);
+  const neuronAbortRef = React.useRef<AbortController | null>(null);
+  const selectedRegionDetail = regions.find((region) => region.name === selectedRegion);
 
   React.useEffect(() => {
-    Promise.all([api.summary(), api.regions()])
+    const controller = new AbortController();
+    Promise.all([api.summary(controller.signal), api.regions(controller.signal)])
       .then(([summaryResponse, regionResponse]) => {
         setSummary(summaryResponse.data);
         setRegions(regionResponse.data);
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => {
+        if (!isAbortError(err)) setError(err.message);
+      });
+    return () => controller.abort();
   }, []);
 
   React.useEffect(() => {
+    const controller = new AbortController();
     setSearchLoading(true);
-    api.search(debouncedQuery, selectedRegion, 30)
+    api.search(debouncedQuery, selectedRegion, 30, controller.signal)
       .then((response) => setResults(response.data))
-      .catch((err) => setError(err.message))
-      .finally(() => setSearchLoading(false));
+      .catch((err) => {
+        if (!isAbortError(err)) setError(err.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSearchLoading(false);
+      });
+    return () => controller.abort();
   }, [debouncedQuery, selectedRegion]);
 
   const openNeuron = React.useCallback((id: string) => {
+    const requestId = ++neuronRequestSeq.current;
+    neuronAbortRef.current?.abort();
+    const controller = new AbortController();
+    neuronAbortRef.current = controller;
     setError('');
     setNeuronLoading(true);
     setIncomingPage(1);
     setOutgoingPage(1);
-    Promise.all([api.neuron(id), api.statistics(id), api.incoming(id, 1, incomingSearch, incomingSort), api.outgoing(id, 1, outgoingSearch, outgoingSort), api.neighborhood(id, direction, maxNodes)])
-      .then(([neuronResponse, statsResponse, incomingResponse, outgoingResponse, neighborhoodResponse]) => {
+    Promise.all([
+      api.neuron(id, controller.signal),
+      api.statistics(id, controller.signal),
+      api.neighborhood(id, direction, maxNodes, controller.signal)
+    ])
+      .then(([neuronResponse, statsResponse, neighborhoodResponse]) => {
+        if (requestId !== neuronRequestSeq.current) return;
         setSelected(neuronResponse.data);
         setStats(statsResponse.data);
-        setIncoming(incomingResponse.data);
-        setOutgoing(outgoingResponse.data);
-        setIncomingTotal(incomingResponse.metadata.total ?? incomingResponse.data.length);
-        setOutgoingTotal(outgoingResponse.metadata.total ?? outgoingResponse.data.length);
         setNeighborhood(neighborhoodResponse.data);
         setSelectedConnection(null);
         setHistory((items) => [neuronResponse.data, ...items.filter((item) => item.id !== id)].slice(0, 8));
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setNeuronLoading(false));
-  }, [direction, incomingSearch, incomingSort, maxNodes, outgoingSearch, outgoingSort]);
+      .catch((err) => {
+        if (!isAbortError(err) && requestId === neuronRequestSeq.current) setError(err.message);
+      })
+      .finally(() => {
+        if (requestId === neuronRequestSeq.current) setNeuronLoading(false);
+        if (neuronAbortRef.current === controller) neuronAbortRef.current = null;
+      });
+  }, [direction, maxNodes]);
+
+  React.useEffect(() => () => neuronAbortRef.current?.abort(), []);
 
   const resetDemo = React.useCallback(() => {
     setSelected(null);
@@ -352,17 +345,24 @@ function App() {
   }, [openNeuron]);
 
   React.useEffect(() => {
+    const controller = new AbortController();
     if (selected) {
-      api.neighborhood(selected.id, direction, maxNodes).then((response) => setNeighborhood(response.data)).catch((err) => setError(err.message));
+      api.neighborhood(selected.id, direction, maxNodes, controller.signal)
+        .then((response) => setNeighborhood(response.data))
+        .catch((err) => {
+          if (!isAbortError(err)) setError(err.message);
+        });
     }
+    return () => controller.abort();
   }, [direction, maxNodes, selected?.id]);
 
   React.useEffect(() => {
     if (!selected) return;
+    const controller = new AbortController();
     setTableLoading(true);
     Promise.all([
-      api.incoming(selected.id, incomingPage, incomingSearch, incomingSort),
-      api.outgoing(selected.id, outgoingPage, outgoingSearch, outgoingSort)
+      api.incoming(selected.id, incomingPage, incomingSearch, incomingSort, controller.signal),
+      api.outgoing(selected.id, outgoingPage, outgoingSearch, outgoingSort, controller.signal)
     ])
       .then(([incomingResponse, outgoingResponse]) => {
         setIncoming(incomingResponse.data);
@@ -370,8 +370,13 @@ function App() {
         setIncomingTotal(incomingResponse.metadata.total ?? incomingResponse.data.length);
         setOutgoingTotal(outgoingResponse.metadata.total ?? outgoingResponse.data.length);
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setTableLoading(false));
+      .catch((err) => {
+        if (!isAbortError(err)) setError(err.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTableLoading(false);
+      });
+    return () => controller.abort();
   }, [incomingPage, incomingSearch, incomingSort, outgoingPage, outgoingSearch, outgoingSort, selected?.id]);
 
   return (
@@ -469,9 +474,31 @@ function App() {
           </div>
           <div className="regions-panel">
             <div className="section-title"><Database size={15} /> Region Explorer</div>
+            {selectedRegionDetail && (
+              <div className="region-detail">
+                <div>
+                  <strong>{selectedRegionDetail.name}</strong>
+                  <span>Indexed demo subset region</span>
+                </div>
+                <Stat label="Indexed neurons" value={selectedRegionDetail.neuronCount.toLocaleString()} />
+                <Stat label="Indexed connections" value={selectedRegionDetail.connectionCount.toLocaleString()} />
+                <div className="region-cell-types">
+                  <span>Top cell types</span>
+                  {selectedRegionDetail.mostCommonCellTypes.map((item) => (
+                    <button key={item.cellType} onClick={() => setQuery(item.cellType)}>{item.cellType} · {item.count}</button>
+                  ))}
+                </div>
+                <div className="region-cell-types">
+                  <span>Representative neurons</span>
+                  {results.slice(0, 5).map((neuron) => (
+                    <button key={neuron.id} onClick={() => openNeuron(neuron.id)}>{neuron.id} · {neuron.cellType}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="region-grid">
               {regions.slice(0, 12).map((region) => (
-                <button key={region.name} className="region-card" onClick={() => setSelectedRegion(region.name)}>
+                <button key={region.name} className="region-card" onClick={() => { setQuery(''); setSelectedRegion(region.name); }}>
                   <strong>{region.name}</strong>
                   <span>{region.neuronCount.toLocaleString()} neurons</span>
                   <span>{region.connectionCount.toLocaleString()} indexed connections</span>

@@ -10,7 +10,7 @@ from app.core.config import settings
 app = FastAPI(
     title="BrainDebugger API",
     description="Developer tools for exploring graph-based connectivity in the Janelia MaleCNS connectome.",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
