@@ -7,6 +7,8 @@
 - Made every indexed region available in the Region Explorer.
 - Added Vitest component/API coverage and a Playwright explorer smoke test.
 - Verified the frontend production build with Vite's runner config loader.
+- Added a real FastAPI/demo-index Playwright integration journey alongside the mocked UI test.
+- Documented the bounded in-memory connection-export behavior and streaming migration path.
 
 ## 1.1.0
 

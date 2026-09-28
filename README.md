@@ -121,6 +121,8 @@ The project uses Vite's runner config loader so these commands work in restricte
 
 The UI intentionally renders local neighborhoods only. The API builds a lightweight normalized-token search index at startup, rejects unsupported connection sorts, enforces hard graph node limits, and exports all matching filtered connection rows. The preprocessing pipeline scans the large weights table once and stores bounded strongest connections per seed neuron for demo mode. Point-level synapse tables remain available as raw source data but are not loaded into the browser.
 
+Connection CSV export materializes the selected neuron's filtered, enriched rows before generating the response. This is bounded and acceptable for the current demo index; a production-scale index should stream export rows from a query engine.
+
 ## Roadmap
 
 - v2.0: multi-hop pathway tracing, saved investigations, query history, route visualization.

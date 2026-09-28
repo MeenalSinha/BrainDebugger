@@ -22,12 +22,14 @@ Safeguards include:
 - explicit demo-subset metadata;
 - supported-sort validation;
 - hard `max_nodes` enforcement for graph neighborhoods;
-- connection CSV export of all matching filtered rows;
+- connection CSV export of all matching filtered rows, materialized only within the current bounded demo index;
 - lazy dataset loading if app startup hooks have not run.
 
 ## Frontend
 
 The frontend is React + TypeScript + Vite with Cytoscape for local graph rendering. Feature modules own the graph, connection tables, inspector, region explorer, explorer controls, demo controls, history, landing, and scientific-scope content. `main.tsx` coordinates application state and request flows. Request flows use `AbortController` and sequence guards for search, neuron opening, table reloads, and graph reloads so stale responses do not overwrite newer UI state.
+
+Playwright has two complementary browser layers: a mocked API contract test for deterministic UI behavior and a real-service integration test that runs the built UI through FastAPI against `data/demo/index.json`.
 
 ## Future Compatibility
 

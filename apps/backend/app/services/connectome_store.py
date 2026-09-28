@@ -165,6 +165,8 @@ class ConnectomeStore:
         return rows[start : start + page_size], total
 
     def all_connection_rows(self, neuron_id: str, direction: str, search: str = "", sort: str = "weight_desc") -> list[dict[str, Any]]:
+        # The demo index bounds per-neuron edges, so a complete export is safely materialized today.
+        # Replace this with a streaming iterator before using a substantially larger index.
         rows, total = self.connection_rows(neuron_id, direction, page=1, page_size=max(1, len(self.connections)), search=search, sort=sort)
         return rows[:total]
 
