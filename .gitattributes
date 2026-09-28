@@ -1,2 +1,0 @@
-data/demo/index.json filter=lfs diff=lfs merge=lfs -text
-data/demo/index.json !text !filter !merge !diff
