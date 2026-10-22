@@ -14,6 +14,7 @@ from backend.config import Settings
 from backend.data_provider import LocalFeatherProvider
 from backend.models import (
     ConnectionListResponse,
+    ConnectivitySummaryResponse,
     DataSourceStatus,
     GraphResponse,
     HealthResponse,
@@ -76,6 +77,12 @@ class ConnectomeService:
         logger.info("Get neuron: body_id=%d", body_id)
         return self._provider.get_neuron(body_id)
 
+    # ── Connectivity summary ──────────────────────────────────────────────────
+
+    def get_connectivity_summary(self, body_id: int) -> Optional[ConnectivitySummaryResponse]:
+        logger.info("Connectivity summary: body_id=%d", body_id)
+        return self._provider.get_connectivity_summary(body_id)
+
     # ── Connections ───────────────────────────────────────────────────────────
 
     def get_connections(
@@ -83,21 +90,36 @@ class ConnectomeService:
         body_id: int,
         direction: str,
         limit: Optional[int] = None,
+        offset: int = 0,
+        sort_by: str = "weight",
+        sort_order: str = "desc",
+        partner_id: Optional[int] = None,
+        partner_type: Optional[str] = None,
+        min_weight: Optional[int] = None,
     ) -> ConnectionListResponse:
         effective_limit = min(
             limit or self._settings.max_connections,
             self._settings.max_connections,
         )
         logger.info(
-            "Connections: body_id=%d direction=%s limit=%d",
+            "Connections: body_id=%d direction=%s limit=%d offset=%d sort=%s:%s",
             body_id,
             direction,
             effective_limit,
+            offset,
+            sort_by,
+            sort_order,
         )
         return self._provider.get_connections(
             body_id=body_id,
             direction=direction,
             limit=effective_limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            partner_id=partner_id,
+            partner_type=partner_type,
+            min_weight=min_weight,
         )
 
     # ── Neighborhood graph ────────────────────────────────────────────────────

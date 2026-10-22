@@ -335,6 +335,234 @@ class TestGraphConstruction:
         assert center_nodes[0].is_selected
 
 
+# ── V2 Connectivity Summary & Intelligence Unit Tests ────────────────────────
+
+class TestV2ConnectivitySummary:
+    """Mathematical and contract correctness for connectivity intelligence."""
+
+    def _make_provider(self):
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        from pathlib import Path
+
+        # 4 neurons: 1 (center), 2, 3, 4
+        annotations = pd.DataFrame({
+            "bodyId": [1, 2, 3, 4],
+            "type": ["CenterType", "PartnerB", "PartnerC", "PartnerD"],
+            "instance": ["inst1", "inst2", "inst3", "inst4"],
+            "superclass": ["class1", "class2", "class3", "class4"],
+            "status": ["Traced", "Traced", "Traced", "Traced"],
+            "statusLabel": ["Traced", "Traced", "Traced", "Traced"],
+            "somaSide": ["L", "R", "L", "R"],
+            "somaNeuromere": [None, None, None, None],
+            "subclass": [None, None, None, None],
+            "hemibrainType": [None, None, None, None],
+        }).set_index("bodyId", drop=False)
+
+        # Connections:
+        # Outgoing from 1: 1->2 (wt=40), 1->3 (wt=60) => 2 partners, 2 records, total weight = 100
+        # Incoming to 1: 4->1 (wt=15), 2->1 (wt=25)   => 2 partners, 2 records, total weight = 40
+        weights = pd.DataFrame({
+            "body_pre": [1, 1, 4, 2],
+            "body_post": [2, 3, 1, 1],
+            "weight": [40, 60, 15, 25],
+            "type_pre": ["CenterType", "CenterType", "PartnerD", "PartnerB"],
+            "type_post": ["PartnerB", "PartnerC", "CenterType", "CenterType"],
+        })
+
+        stats = pd.DataFrame({
+            "body": [1, 2],
+            "pre": [120, 50],
+            "post": [200, 80],
+            "synweight": [320, 130],
+        }).set_index("body", drop=False)
+
+        p = LocalFeatherProvider(Path("/fake"))
+        p._annotations = annotations
+        p._weights = weights
+        p._nt = pd.DataFrame()
+        p._stats = stats
+        p._loaded = True
+        return p
+
+    def test_summary_calculation_correctness(self):
+        p = self._make_provider()
+        s = p.get_connectivity_summary(1)
+        assert s is not None
+        assert s.body_id == 1
+        # Outgoing
+        assert s.outgoing.partner_count == 2
+        assert s.outgoing.record_count == 2
+        assert s.outgoing.total_weight == 100
+        assert s.outgoing.body_stat_synapses == 120  # pre synapses
+        # Incoming
+        assert s.incoming.partner_count == 2
+        assert s.incoming.record_count == 2
+        assert s.incoming.total_weight == 40
+        assert s.incoming.body_stat_synapses == 200  # post synapses
+        # Source metadata
+        assert s.is_traced_only_subset is True
+        assert "traced-only" in s.coverage_notice
+
+    def test_summary_nonexistent_neuron_returns_none(self):
+        p = self._make_provider()
+        assert p.get_connectivity_summary(9999) is None
+
+    def test_summary_isolated_neuron(self):
+        import pandas as pd
+        p = self._make_provider()
+        # Add isolated neuron 5
+        isolated_row = pd.DataFrame({
+            "bodyId": [5],
+            "type": ["Isolated"],
+            "instance": ["inst5"],
+            "superclass": [None],
+            "status": ["Traced"],
+            "statusLabel": ["Traced"],
+            "somaSide": [None],
+            "somaNeuromere": [None],
+            "subclass": [None],
+            "hemibrainType": [None],
+        }).set_index("bodyId", drop=False)
+        p._annotations = pd.concat([p._annotations, isolated_row])
+
+        s = p.get_connectivity_summary(5)
+        assert s is not None
+        assert s.incoming.partner_count == 0
+        assert s.incoming.record_count == 0
+        assert s.incoming.total_weight == 0
+        assert s.outgoing.partner_count == 0
+        assert s.outgoing.record_count == 0
+        assert s.outgoing.total_weight == 0
+
+
+# ── V2 Connection Sorting, Filtering & Pagination Unit Tests ─────────────────
+
+class TestV2ConnectionSortingFilteringPagination:
+    """Unit tests for connection query parameters."""
+
+    def _make_provider(self):
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        from pathlib import Path
+
+        # Neuron 1 has outgoing connections to partners 2, 3, 5, 10, 20
+        annotations = pd.DataFrame({
+            "bodyId": [1, 2, 3, 5, 10, 20],
+            "type": ["SrcType", "GABA_A", "Glutamatergic", "Dopaminergic", "Cholinergic", "GABA_B"],
+            "instance": ["src", "inst2", "inst3", "inst5", "inst10", "inst20"],
+            "superclass": ["super_src", "super_gaba", "super_glu", "super_dop", "super_chol", "super_gaba"],
+            "status": ["Traced"] * 6,
+            "statusLabel": ["Traced"] * 6,
+            "somaSide": ["L"] * 6,
+            "somaNeuromere": [None] * 6,
+            "subclass": [None] * 6,
+            "hemibrainType": [None] * 6,
+        }).set_index("bodyId", drop=False)
+
+        weights = pd.DataFrame({
+            "body_pre": [1, 1, 1, 1, 1],
+            "body_post": [2, 10, 3, 20, 5],
+            "weight": [10, 50, 30, 20, 40],
+            "type_pre": ["SrcType"] * 5,
+            "type_post": ["GABA_A", "Cholinergic", "Glutamatergic", "GABA_B", "Dopaminergic"],
+        })
+
+        p = LocalFeatherProvider(Path("/fake"))
+        p._annotations = annotations
+        p._weights = weights
+        p._nt = pd.DataFrame()
+        p._stats = pd.DataFrame()
+        p._loaded = True
+        return p
+
+    def test_sort_by_weight_descending(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, sort_by="weight", sort_order="desc")
+        weights = [c.weight for c in res.connections]
+        assert weights == [50, 40, 30, 20, 10]
+
+    def test_sort_by_weight_ascending(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, sort_by="weight", sort_order="asc")
+        weights = [c.weight for c in res.connections]
+        assert weights == [10, 20, 30, 40, 50]
+
+    def test_sort_by_partner_id_numerical(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, sort_by="partner_id", sort_order="asc")
+        partners = [c.body_post for c in res.connections]
+        # Numerical order: 2, 3, 5, 10, 20 (NOT lexicographical 10, 2, 20...)
+        assert partners == [2, 3, 5, 10, 20]
+
+    def test_sort_by_partner_type(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, sort_by="partner_type", sort_order="asc")
+        types = [c.type_post for c in res.connections]
+        assert types == sorted(types)
+
+    def test_filter_by_partner_id(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, partner_id=10)
+        assert res.total_matched == 1
+        assert res.total_in_source == 5
+        assert len(res.connections) == 1
+        assert res.connections[0].body_post == 10
+        assert res.connections[0].weight == 50
+
+    def test_filter_by_partner_type_case_insensitive_substring(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, partner_type="gaba")
+        assert res.total_matched == 2
+        assert res.total_in_source == 5
+        types = {c.type_post for c in res.connections}
+        assert types == {"GABA_A", "GABA_B"}
+
+    def test_filter_by_min_weight(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=10, min_weight=30)
+        assert res.total_matched == 3
+        assert res.total_in_source == 5
+        assert all(c.weight >= 30 for c in res.connections)
+
+    def test_pagination_disjoint_pages(self):
+        p = self._make_provider()
+        # Page 1: 2 items
+        p1 = p.get_connections(body_id=1, direction="outgoing", limit=2, offset=0, sort_by="weight", sort_order="desc")
+        assert len(p1.connections) == 2
+        assert p1.returned_count == 2
+        assert p1.total_matched == 5
+        assert p1.total_in_source == 5
+        assert p1.has_more is True
+
+        # Page 2: 2 items
+        p2 = p.get_connections(body_id=1, direction="outgoing", limit=2, offset=2, sort_by="weight", sort_order="desc")
+        assert len(p2.connections) == 2
+        assert p2.has_more is True
+
+        # Page 3: 1 item (last)
+        p3 = p.get_connections(body_id=1, direction="outgoing", limit=2, offset=4, sort_by="weight", sort_order="desc")
+        assert len(p3.connections) == 1
+        assert p3.has_more is False
+
+        # Disjoint partner verification
+        ids1 = {c.body_post for c in p1.connections}
+        ids2 = {c.body_post for c in p2.connections}
+        ids3 = {c.body_post for c in p3.connections}
+        assert ids1.isdisjoint(ids2)
+        assert ids2.isdisjoint(ids3)
+        assert len(ids1 | ids2 | ids3) == 5
+
+    def test_enriched_partner_metadata(self):
+        p = self._make_provider()
+        res = p.get_connections(body_id=1, direction="outgoing", limit=5, partner_id=2)
+        assert len(res.connections) == 1
+        c = res.connections[0]
+        assert c.instance_post == "inst2"
+        assert c.superclass_post == "super_gaba"
+
+
+
 # ── Integration tests (opt-in, require local Feather files) ───────────────────
 
 @pytest.mark.integration
@@ -360,11 +588,16 @@ class TestRealDataIntegration:
                 "Place the dataset files there and re-run to execute live data tests."
             )
 
-    def _get_loaded_provider(self):
-        from backend.data_provider import LocalFeatherProvider
-        p = LocalFeatherProvider(self._DATA_DIR)
-        p.load()
-        return p
+    _cached_provider = None
+
+    @classmethod
+    def _get_loaded_provider(cls):
+        if cls._cached_provider is None:
+            from backend.data_provider import LocalFeatherProvider
+            p = LocalFeatherProvider(cls._DATA_DIR)
+            p.load()
+            cls._cached_provider = p
+        return cls._cached_provider
 
     def test_data_loads_without_error(self):
         p = self._get_loaded_provider()
@@ -446,3 +679,61 @@ class TestRealDataIntegration:
         for edge in g.edges:
             assert edge.source == str(edge.body_pre), "Edge source != body_pre"
             assert edge.target == str(edge.body_post), "Edge target != body_post"
+
+    def test_v2_real_data_connectivity_summary(self):
+        p = self._get_loaded_provider()
+        result = p.search("DNp01", limit=1)
+        assert len(result.results) > 0
+        body_id = result.results[0].body_id
+
+        summary = p.get_connectivity_summary(body_id)
+        assert summary is not None
+        assert summary.body_id == body_id
+        assert summary.incoming.record_count > 0
+        assert summary.incoming.partner_count > 0
+        assert summary.incoming.total_weight > 0
+        assert summary.outgoing.record_count > 0
+        assert summary.outgoing.partner_count > 0
+        assert summary.outgoing.total_weight > 0
+        assert summary.is_traced_only_subset is True
+        assert len(summary.coverage_notice) > 0
+
+    def test_v2_real_data_pagination_and_sorting(self):
+        p = self._get_loaded_provider()
+        result = p.search("DNp01", limit=1)
+        body_id = result.results[0].body_id
+
+        # Page 1
+        p1 = p.get_connections(body_id=body_id, direction="outgoing", limit=5, offset=0, sort_by="weight", sort_order="desc")
+        assert len(p1.connections) == 5
+        assert p1.returned_count == 5
+        assert p1.total_matched > 5
+        assert p1.total_in_source == p1.total_matched
+        assert p1.has_more is True
+
+        # Check descending weights
+        wts1 = [c.weight for c in p1.connections]
+        assert wts1 == sorted(wts1, reverse=True)
+
+        # Page 2
+        p2 = p.get_connections(body_id=body_id, direction="outgoing", limit=5, offset=5, sort_by="weight", sort_order="desc")
+        assert len(p2.connections) == 5
+
+        # Check disjoint sets
+        partners_p1 = {c.body_post for c in p1.connections}
+        partners_p2 = {c.body_post for c in p2.connections}
+        assert partners_p1.isdisjoint(partners_p2)
+
+    def test_v2_real_data_connection_filtering(self):
+        p = self._get_loaded_provider()
+        result = p.search("DNp01", limit=1)
+        body_id = result.results[0].body_id
+
+        all_conn = p.get_connections(body_id=body_id, direction="outgoing", limit=100)
+        assert len(all_conn.connections) > 0
+        sample_partner = all_conn.connections[0].body_post
+
+        filtered = p.get_connections(body_id=body_id, direction="outgoing", limit=10, partner_id=sample_partner)
+        assert filtered.total_matched >= 1
+        assert all(c.body_post == sample_partner for c in filtered.connections)
+

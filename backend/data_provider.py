@@ -37,6 +37,8 @@ from backend.config import Settings
 from backend.models import (
     Connection,
     ConnectionListResponse,
+    ConnectivitySummaryResponse,
+    DirectionalConnectivitySummary,
     GraphEdge,
     GraphNode,
     GraphResponse,
@@ -183,6 +185,10 @@ class LocalFeatherProvider:
             pre_synapses=pre_s,
             post_synapses=post_s,
             synweight=synwt,
+            entry_nerve=_nan_to_none(row.get("entryNerve")),
+            exit_nerve=_nan_to_none(row.get("exitNerve")),
+            dimorphism=_nan_to_none(row.get("dimorphism")),
+            group=_nan_to_none(row.get("group")),
         )
 
     def _node_label(self, body_id: int, cell_type: Optional[str], instance: Optional[str]) -> str:
@@ -249,42 +255,201 @@ class LocalFeatherProvider:
         """Return a single neuron by body_id or None if not found."""
         return self._build_neuron(body_id)
 
+    def get_connectivity_summary(
+        self,
+        body_id: int,
+    ) -> Optional[ConnectivitySummaryResponse]:
+        """
+        Calculate connectivity intelligence metrics from actual loaded source data.
+
+        Metrics:
+          - incoming: partner count (unique body_pre), record count, sum of weights, post-synapses from body-stats.
+          - outgoing: partner count (unique body_post), record count, sum of weights, pre-synapses from body-stats.
+        """
+        if body_id not in self._annotations.index:
+            return None
+
+        wt = self._weights
+        inc_df = wt[wt["body_post"] == body_id] if not wt.empty else pd.DataFrame()
+        out_df = wt[wt["body_pre"] == body_id] if not wt.empty else pd.DataFrame()
+
+        inc_partners = int(inc_df["body_pre"].nunique()) if not inc_df.empty else 0
+        inc_records = len(inc_df)
+        inc_weight = int(inc_df["weight"].sum()) if not inc_df.empty else 0
+
+        out_partners = int(out_df["body_post"].nunique()) if not out_df.empty else 0
+        out_records = len(out_df)
+        out_weight = int(out_df["weight"].sum()) if not out_df.empty else 0
+
+        # Stats lookup
+        pre_s = post_s = None
+        if not self._stats.empty and body_id in self._stats.index:
+            st = self._stats.loc[body_id]
+            pre_s = int(st["pre"]) if pd.notna(st.get("pre")) else None
+            post_s = int(st["post"]) if pd.notna(st.get("post")) else None
+
+        return ConnectivitySummaryResponse(
+            body_id=body_id,
+            incoming=DirectionalConnectivitySummary(
+                direction="incoming",
+                partner_count=inc_partners,
+                record_count=inc_records,
+                total_weight=inc_weight,
+                body_stat_synapses=post_s,
+            ),
+            outgoing=DirectionalConnectivitySummary(
+                direction="outgoing",
+                partner_count=out_partners,
+                record_count=out_records,
+                total_weight=out_weight,
+                body_stat_synapses=pre_s,
+            ),
+            source_file=_WEIGHTS_FILE,
+            is_traced_only_subset=True,
+            coverage_notice=(
+                f"Counts and weights reflect connections present in the loaded "
+                f"{DATASET_NAME} traced-only dataset (min confidence 0.5) and do not "
+                "represent the entire biological connectome."
+            ),
+            dataset=DATASET_NAME,
+        )
+
     def get_connections(
         self,
         body_id: int,
         direction: str,
-        limit: int,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "weight",
+        sort_order: str = "desc",
+        partner_id: Optional[int] = None,
+        partner_type: Optional[str] = None,
+        min_weight: Optional[int] = None,
     ) -> ConnectionListResponse:
         """
-        Retrieve incoming or outgoing connections for a neuron.
+        Retrieve incoming or outgoing connections for a neuron with sorting,
+        filtering, and pagination.
 
         direction: 'incoming' — connections WHERE body_post == body_id
                    'outgoing' — connections WHERE body_pre == body_id
         """
         wt = self._weights
-        if direction == "incoming":
-            rows = wt[wt["body_post"] == body_id].nlargest(limit, "weight")
-        else:
-            rows = wt[wt["body_pre"] == body_id].nlargest(limit, "weight")
-
-        connections = [
-            Connection(
-                body_pre=int(r["body_pre"]),
-                body_post=int(r["body_post"]),
-                weight=int(r["weight"]),
-                type_pre=_nan_to_none(r.get("type_pre")),
-                type_post=_nan_to_none(r.get("type_post")),
+        if wt.empty:
+            return ConnectionListResponse(
+                body_id=body_id,
+                direction=direction,
+                connections=[],
+                returned_count=0,
+                total_matched=0,
+                total_in_source=0,
+                unique_partners=0,
+                total=0,
+                limit=limit,
+                offset=offset,
+                has_more=False,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                partner_filter=partner_type,
+                dataset=DATASET_NAME,
+                source_file=_WEIGHTS_FILE,
+                is_traced_only_subset=True,
             )
-            for _, r in rows.iterrows()
-        ]
+
+        partner_col = "body_pre" if direction == "incoming" else "body_post"
+        partner_type_col = "type_pre" if direction == "incoming" else "type_post"
+
+        if direction == "incoming":
+            matched = wt[wt["body_post"] == body_id]
+        else:
+            matched = wt[wt["body_pre"] == body_id]
+
+        total_in_source = len(matched)
+
+        # Filtering
+        filtered = matched
+        if partner_id is not None:
+            filtered = filtered[filtered[partner_col] == partner_id]
+        if partner_type:
+            q_pt = partner_type.strip().lower()
+            filtered = filtered[
+                filtered[partner_type_col].fillna("").str.lower().str.contains(q_pt, regex=False)
+            ]
+        if min_weight is not None:
+            filtered = filtered[filtered["weight"] >= min_weight]
+
+        total_matched = len(filtered)
+        unique_partners = int(filtered[partner_col].nunique()) if not filtered.empty else 0
+
+        # Sorting
+        ascending = (sort_order.lower() == "asc")
+        if sort_by == "partner_id":
+            sort_cols = [partner_col, "weight"]
+            sort_ascs = [ascending, False]
+        elif sort_by == "partner_type":
+            sort_cols = [partner_type_col, "weight"]
+            sort_ascs = [ascending, False]
+        else:  # default "weight"
+            sort_cols = ["weight", partner_col]
+            sort_ascs = [ascending, True]
+
+        sorted_df = filtered.sort_values(by=sort_cols, ascending=sort_ascs)
+
+        # Pagination
+        page = sorted_df.iloc[offset : offset + limit]
+        has_more = (offset + len(page)) < total_matched
+
+        connections = []
+        ann = self._annotations
+        for _, r in page.iterrows():
+            b_pre = int(r["body_pre"])
+            b_post = int(r["body_post"])
+
+            inst_pre = None
+            sup_pre = None
+            if not ann.empty and b_pre in ann.index:
+                row_pre = ann.loc[b_pre]
+                inst_pre = _nan_to_none(row_pre.get("instance"))
+                sup_pre = _nan_to_none(row_pre.get("superclass"))
+
+            inst_post = None
+            sup_post = None
+            if not ann.empty and b_post in ann.index:
+                row_post = ann.loc[b_post]
+                inst_post = _nan_to_none(row_post.get("instance"))
+                sup_post = _nan_to_none(row_post.get("superclass"))
+
+            connections.append(
+                Connection(
+                    body_pre=b_pre,
+                    body_post=b_post,
+                    weight=int(r["weight"]),
+                    type_pre=_nan_to_none(r.get("type_pre")),
+                    type_post=_nan_to_none(r.get("type_post")),
+                    instance_pre=inst_pre,
+                    instance_post=inst_post,
+                    superclass_pre=sup_pre,
+                    superclass_post=sup_post,
+                )
+            )
 
         return ConnectionListResponse(
             body_id=body_id,
             direction=direction,
             connections=connections,
-            total=len(connections),
+            returned_count=len(connections),
+            total_matched=total_matched,
+            total_in_source=total_in_source,
+            unique_partners=unique_partners,
+            total=total_matched,
             limit=limit,
+            offset=offset,
+            has_more=has_more,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            partner_filter=partner_type,
             dataset=DATASET_NAME,
+            source_file=_WEIGHTS_FILE,
+            is_traced_only_subset=True,
         )
 
     def get_neighborhood(

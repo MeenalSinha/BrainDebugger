@@ -53,6 +53,17 @@ class Neuron(BaseModel):
     synweight: Optional[int] = None
 
 
+    entry_nerve: Optional[str] = None
+    exit_nerve: Optional[str] = None
+    dimorphism: Optional[str] = None
+    group: Optional[str] = None
+    dataset: str = "male-cns:v1.0"
+    dataset_attribution: str = (
+        "Schlegel et al., Whole-brain annotation and multi-connectome cell typing "
+        "of Drosophila, Nature 634, 139–152 (2024). CC BY 4.0."
+    )
+
+
 class NeuronSearchResult(BaseModel):
     """Lightweight result returned by search endpoints."""
     body_id: int
@@ -73,6 +84,43 @@ class NeuronSearchResponse(BaseModel):
     dataset: str
 
 
+# ── Connectivity Summary ─────────────────────────────────────────────────────
+
+class DirectionalConnectivitySummary(BaseModel):
+    """
+    Summary metrics for incoming or outgoing connections of a neuron.
+    
+    All partner counts and record counts are computed from the actual loaded
+    connection data source.
+    """
+    direction: str  # 'incoming' | 'outgoing'
+    partner_count: int  # Distinct partners represented in the loaded weights file
+    record_count: int  # Total connection records in the loaded weights file
+    total_weight: int  # Sum of recorded synaptic weights in loaded weights file
+    body_stat_synapses: Optional[int] = None  # Pre- or post-synapse count from body-stats file
+
+
+class ConnectivitySummaryResponse(BaseModel):
+    """
+    Comprehensive connectivity intelligence overview for a selected neuron.
+    
+    Exposes both incoming and outgoing summaries alongside explicit source
+    coverage information to distinguish partial/traced-only coverage from
+    complete biological connectome statistics.
+    """
+    body_id: int
+    incoming: DirectionalConnectivitySummary
+    outgoing: DirectionalConnectivitySummary
+    source_file: str = "connectome-weights-male-cns-v1.0-minconf-0.5-traced-only.feather"
+    is_traced_only_subset: bool = True
+    coverage_notice: str = (
+        "Counts and weights reflect connections present in the loaded "
+        "male-cns:v1.0 traced-only dataset (min confidence 0.5) and do not "
+        "represent the entire biological connectome."
+    )
+    dataset: str = "male-cns:v1.0"
+
+
 # ── Connection ───────────────────────────────────────────────────────────────
 
 class Connection(BaseModel):
@@ -85,6 +133,10 @@ class Connection(BaseModel):
         weight     — synapse count from connectome-weights
         type_pre   — cell type of presynaptic neuron (may be NaN)
         type_post  — cell type of postsynaptic neuron (may be NaN)
+        instance_pre — instance name of presynaptic neuron (may be NaN)
+        instance_post — instance name of postsynaptic neuron (may be NaN)
+        superclass_pre — superclass of presynaptic neuron (may be NaN)
+        superclass_post — superclass of postsynaptic neuron (may be NaN)
 
     Direction:  body_pre ──→ body_post
     Weight:     recorded synapse count; does not imply physiological strength.
@@ -96,16 +148,39 @@ class Connection(BaseModel):
     weight: int
     type_pre: Optional[str] = None
     type_post: Optional[str] = None
+    instance_pre: Optional[str] = None
+    instance_post: Optional[str] = None
+    superclass_pre: Optional[str] = None
+    superclass_post: Optional[str] = None
 
 
 class ConnectionListResponse(BaseModel):
-    """Connections response for a given neuron."""
+    """
+    Connections response for a given neuron with complete pagination, sorting,
+    filtering, and source-scope metadata.
+    """
     body_id: int
     direction: str  # 'incoming' | 'outgoing'
     connections: list[Connection]
-    total: int
+    returned_count: int  # Number of connection records returned in this page
+    total_matched: int  # Total records matching the filter in loaded source
+    total_in_source: int  # Total records for this direction in loaded source (unfiltered)
+    unique_partners: int  # Number of distinct partners in matching records
+    total: int  # Maintained for backward compatibility (equals total_matched)
     limit: int
-    dataset: str
+    offset: int = 0
+    has_more: bool = False
+    sort_by: str = "weight"
+    sort_order: str = "desc"
+    partner_filter: Optional[str] = None
+    dataset: str = "male-cns:v1.0"
+    source_file: str = "connectome-weights-male-cns-v1.0-minconf-0.5-traced-only.feather"
+    is_traced_only_subset: bool = True
+    coverage_notice: str = (
+        "Connections reflect records in the male-cns:v1.0 traced-only dataset "
+        "(min confidence 0.5). Synaptic weights represent recorded synapse counts, "
+        "not physiological conductance."
+    )
 
 
 # ── Graph ────────────────────────────────────────────────────────────────────

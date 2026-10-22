@@ -20,6 +20,12 @@ export interface Neuron {
   pre_synapses: number | null;
   post_synapses: number | null;
   synweight: number | null;
+  entry_nerve?: string | null;
+  exit_nerve?: string | null;
+  dimorphism?: string | null;
+  group?: string | null;
+  dataset?: string;
+  dataset_attribution?: string;
 }
 
 export interface NeuronSearchResult {
@@ -40,21 +46,55 @@ export interface NeuronSearchResponse {
   dataset: string;
 }
 
+export interface DirectionalConnectivitySummary {
+  direction: 'incoming' | 'outgoing';
+  partner_count: number;
+  record_count: number;
+  total_weight: number;
+  body_stat_synapses: number | null;
+}
+
+export interface ConnectivitySummaryResponse {
+  body_id: number;
+  incoming: DirectionalConnectivitySummary;
+  outgoing: DirectionalConnectivitySummary;
+  source_file: string;
+  is_traced_only_subset: boolean;
+  coverage_notice: string;
+  dataset: string;
+}
+
 export interface Connection {
   body_pre: number;
   body_post: number;
   weight: number;
   type_pre: string | null;
   type_post: string | null;
+  instance_pre?: string | null;
+  instance_post?: string | null;
+  superclass_pre?: string | null;
+  superclass_post?: string | null;
 }
 
 export interface ConnectionListResponse {
   body_id: number;
   direction: 'incoming' | 'outgoing';
   connections: Connection[];
+  returned_count: number;
+  total_matched: number;
+  total_in_source: number;
+  unique_partners: number;
   total: number;
   limit: number;
+  offset: number;
+  has_more: boolean;
+  sort_by: string;
+  sort_order: string;
+  partner_filter?: string | null;
   dataset: string;
+  source_file: string;
+  is_traced_only_subset: boolean;
+  coverage_notice: string;
 }
 
 export interface GraphNode {

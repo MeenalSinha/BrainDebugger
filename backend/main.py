@@ -18,6 +18,7 @@ from backend.config import Settings, configure_logging, get_settings
 from backend.data_provider import LocalFeatherProvider
 from backend.models import (
     ConnectionListResponse,
+    ConnectivitySummaryResponse,
     ErrorDetail,
     GraphResponse,
     HealthResponse,
@@ -181,6 +182,38 @@ async def get_neuron(body_id: int, svc: ServiceDep) -> Neuron:
 
 
 @app.get(
+    "/api/neurons/{body_id}/connectivity-summary",
+    response_model=ConnectivitySummaryResponse,
+    responses={
+        400: {"model": ErrorDetail},
+        404: {"model": ErrorDetail},
+        503: {"model": ErrorDetail},
+    },
+    summary="Retrieve connectivity summary and intelligence for a neuron",
+    tags=["Connections"],
+)
+async def get_connectivity_summary(
+    body_id: int,
+    svc: ServiceDep,
+) -> ConnectivitySummaryResponse:
+    """
+    Returns accurate connectivity intelligence overview for a neuron:
+    - Unique presynaptic and postsynaptic partner counts in loaded dataset
+    - Total matching connection records in loaded dataset
+    - Sum of synaptic weights in loaded dataset
+    - Body-level pre and post synapse counts
+    - Explicit source and coverage metadata
+    """
+    summary = svc.get_connectivity_summary(body_id)
+    if summary is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Neuron {body_id} not found."},
+        )
+    return summary
+
+
+@app.get(
     "/api/neurons/{body_id}/connections",
     response_model=ConnectionListResponse,
     responses={
@@ -188,23 +221,30 @@ async def get_neuron(body_id: int, svc: ServiceDep) -> Neuron:
         404: {"model": ErrorDetail},
         503: {"model": ErrorDetail},
     },
-    summary="Retrieve incoming or outgoing connections for a neuron",
+    summary="Retrieve incoming or outgoing connections with sorting, filtering, and pagination",
     tags=["Connections"],
 )
 async def get_connections(
     body_id: int,
     svc: ServiceDep,
     direction: str = Query("outgoing", pattern="^(incoming|outgoing)$"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=500, description="Page size limit"),
+    offset: int = Query(0, ge=0, description="Page offset"),
+    sort_by: str = Query("weight", pattern="^(weight|partner_id|partner_type)$", description="Field to sort by"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order"),
+    partner_id: Optional[int] = Query(None, ge=1, description="Filter by partner body ID"),
+    partner_type: Optional[str] = Query(None, min_length=1, description="Filter by partner cell type (case-insensitive substring)"),
+    min_weight: Optional[int] = Query(None, ge=1, description="Filter by minimum connection weight"),
 ) -> ConnectionListResponse:
     """
-    Returns actual recorded connections for the neuron.
+    Returns actual recorded connections for the neuron with full pagination,
+    server-side filtering, and deterministic sorting.
 
     - direction=outgoing: body_id → partners (presynaptic neuron = body_id)
     - direction=incoming: partners → body_id (postsynaptic neuron = body_id)
 
-    Connections are sorted by weight descending.
     Edge direction is preserved exactly as recorded in the dataset.
+    Response includes total matching records, total in source, and coverage disclaimers.
     """
     neuron = svc.get_neuron(body_id)
     if neuron is None:
@@ -213,7 +253,17 @@ async def get_connections(
             detail={"error": "not_found", "message": f"Neuron {body_id} not found."},
         )
     try:
-        return svc.get_connections(body_id=body_id, direction=direction, limit=limit)
+        return svc.get_connections(
+            body_id=body_id,
+            direction=direction,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            partner_id=partner_id,
+            partner_type=partner_type,
+            min_weight=min_weight,
+        )
     except Exception as exc:
         logger.error("Connections failed: body_id=%d %s", body_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "query_failed", "message": str(exc)})
