@@ -17,6 +17,7 @@ import {
   Info,
   CheckCircle,
   Hash,
+  Bug,
 } from 'lucide-react';
 import { api, ApiClientError } from '../api';
 import type {
@@ -33,6 +34,7 @@ interface Props {
   onActivePathChanged: (path: PathItem | null) => void;
   onCascadeCalculated: (data: DownstreamCascadeResponse | null) => void;
   onModeChanged: (mode: 'pathway' | 'cascade') => void;
+  onStartDebugging?: (path: PathItem) => void;
   externalSourceId?: number | null;
   externalTargetId?: number | null;
   externalCascadeRootId?: number | null;
@@ -45,6 +47,7 @@ export const PathwayTracer: React.FC<Props> = ({
   onActivePathChanged,
   onCascadeCalculated,
   onModeChanged,
+  onStartDebugging,
   externalSourceId,
   externalTargetId,
   externalCascadeRootId,
@@ -274,6 +277,7 @@ export const PathwayTracer: React.FC<Props> = ({
                   </label>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input
+                      id="pathway-source-input"
                       type="number"
                       placeholder="e.g. 10001"
                       className="form-control"
@@ -300,6 +304,7 @@ export const PathwayTracer: React.FC<Props> = ({
                   </label>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input
+                      id="pathway-target-input"
                       type="number"
                       placeholder="e.g. 814827"
                       className="form-control"
@@ -328,6 +333,7 @@ export const PathwayTracer: React.FC<Props> = ({
                     Ranking Strategy
                   </label>
                   <select
+                    id="pathway-strategy-select"
                     className="form-control"
                     value={strategy}
                     onChange={(e) => setStrategy(e.target.value as PathRankingStrategy)}
@@ -342,6 +348,7 @@ export const PathwayTracer: React.FC<Props> = ({
                     Max Hops
                   </label>
                   <input
+                    id="pathway-maxhops-input"
                     type="number"
                     min="1"
                     max="10"
@@ -356,6 +363,7 @@ export const PathwayTracer: React.FC<Props> = ({
                     Max Paths
                   </label>
                   <input
+                    id="pathway-maxpaths-input"
                     type="number"
                     min="1"
                     max="20"
@@ -369,6 +377,7 @@ export const PathwayTracer: React.FC<Props> = ({
               {/* Action Buttons */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
+                  id="pathway-trace-btn"
                   className="btn btn-primary"
                   onClick={handleTracePathway}
                   disabled={pathwayLoading || !sourceId.trim() || !targetId.trim()}
@@ -487,15 +496,31 @@ export const PathwayTracer: React.FC<Props> = ({
                               <td className="mono">{p.total_weight}</td>
                               <td className="mono">{p.bottleneck_weight}</td>
                               <td>
-                                <button
-                                  className={`btn btn-xs ${isSelected ? 'btn-primary' : 'btn-outline'}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectPathRow(idx);
-                                  }}
-                                >
-                                  {isSelected ? 'Active' : 'Highlight'}
-                                </button>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <button
+                                    className={`btn btn-xs ${isSelected ? 'btn-primary' : 'btn-outline'}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectPathRow(idx);
+                                    }}
+                                  >
+                                    {isSelected ? 'Active' : 'Highlight'}
+                                  </button>
+                                  {onStartDebugging && (
+                                    <button
+                                      className="btn btn-xs btn-warning"
+                                      title="Open route in Neural Debugger"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSelectPathRow(idx);
+                                        onStartDebugging(p);
+                                      }}
+                                    >
+                                      <Bug size={11} />
+                                      <span>Debug</span>
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -508,9 +533,22 @@ export const PathwayTracer: React.FC<Props> = ({
                 {/* Active Path Node Progression */}
                 {pathwayResult.paths[selectedPathIndex] && (
                   <div className="card active-path-details" style={{ marginBottom: 16 }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                      Path #{pathwayResult.paths[selectedPathIndex].rank} Step-by-Step Breakdown
-                    </h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>
+                        Path #{pathwayResult.paths[selectedPathIndex].rank} Step-by-Step Breakdown
+                      </h4>
+                      {onStartDebugging && (
+                        <button
+                          className="btn btn-xs btn-warning"
+                          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => onStartDebugging(pathwayResult.paths[selectedPathIndex])}
+                          title="Launch Neural Debugger on this pathway"
+                        >
+                          <Bug size={12} />
+                          <span>Debug This Path (V4)</span>
+                        </button>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {pathwayResult.paths[selectedPathIndex].nodes.map((node, nIdx) => {
                         const edge = pathwayResult.paths[selectedPathIndex].edges[nIdx];

@@ -11,11 +11,12 @@ Interactive connectome exploration platform for the **Janelia MaleCNS v1.0** dat
 ## What is this?
 
 BrainDebugger applies a software-debugger metaphor to biological neural circuits.
-Instead of inspecting functions and variables, researchers inspect neurons, synaptic connections, anatomical annotations, and local network structure.This release implements:
+Instead of inspecting functions and variables, researchers inspect neurons, synaptic connections, anatomical annotations, and local network structure. This release implements:
 - **V0 — Foundation & Data Audit**: Backend data access, neuPrint/local Feather abstraction, API, configuration, and audit tests.
 - **V1 — Connectome Explorer**: Interactive three-panel interface (search/filter, Cytoscape.js neighborhood graph, basic inspector).
 - **V2 — Enhanced Neuron Inspector & Connectivity Intelligence**: Production-grade neuron inspector with collapsible profile sections, bi-directional connectivity intelligence summary, sortable/filterable/paginated connection tables with relative weight bars, honest scientific provenance disclosure, and race-condition-free async lifecycle.
 - **V3 — Neural Pathway Tracer & Downstream Cascade Analysis**: Dedicated workspace for tracing multi-hop directed structural pathways between arbitrary neurons, discovering and comparing alternative routes with shortest-hop and mathematically sound weight-prioritized rankings, and computing downstream reachability cascades grouped by hop distance with layer-by-layer graph visualization and full Inspector synchronization.
+- **V4 — Neural Debugger: Interactive Structural Path Tracing, Breakpoints & Execution History**: Developer-tools-style interactive debugging environment that turns any selected V3 directed pathway into an inspectable, deterministic execution trace with step navigation, pause/continue/stop/restart controls, configurable breakpoints (Neuron ID, Hop Index, Cell Type/Superclass Annotation, Recorded Synapse Weight Threshold), a transparent monotonically ordered execution event log, and JSON export.
 
 ---
 
@@ -126,6 +127,53 @@ Interactive documentation is available at:
 
 ---
 
+## Version 4 Features
+
+### 1. Neural Debugger Workspace
+- Accessible header workspace switcher between **Connectome Explorer**, **Pathway Tracer & Downstream Cascade**, and **Neural Debugger**.
+- Direct launch from any returned V3 route via the **[Debug This Path (V4)]** action in both the pathway comparison table and route breakdown card.
+- Automatic initialization: if navigated directly without an active multi-hop search, initializes a valid 0-hop trace for the currently selected neuron without inventing edges.
+- Workspace layout inspired by developer tools:
+  - **Left panel**: Route Steps timeline (step index, hop count, active cursor indicator, click-to-jump) and Breakpoint Manager.
+  - **Center canvas**: Active pathway graph with distinct cursor highlighting on the currently inspected neuron and traversed directed edge banner with synapse count.
+  - **Bottom drawer**: Monotonically ordered, filterable Execution Event Log with UTC timestamps and JSON export.
+  - **Right panel**: Fully synchronized Neuron Inspector showing live identity, neurotransmitter, and connectivity intelligence for the active cursor node.
+
+### 2. Deterministic Trace-State Engine
+- State machine with explicit typed transitions: `ready`, `running`, `paused`, `completed`, `stopped`, and `error`.
+- Path validation: strictly validates that the route has at least one node, consecutive pairs are connected by valid directed edges, and edge directions are presynaptic-to-postsynaptic.
+- Zero-hop path handling: source-equals-target routes are valid 1-node, 0-edge sessions that immediately complete on step without fabricating connections.
+- Backward navigation semantics: **Previous** moves the inspection cursor to an earlier recorded node in the validated path and records a `history_navigation` event. It does **not** invent reverse biological synaptic edges.
+- Concurrency & race condition safety: the auto-run interval is tracked with explicit references and cancelled on pause, stop, step, jump, restart, or component unmount.
+
+### 3. Execution & Playback Controls
+- **Step**: Advances execution by exactly one directed edge, updates the cursor, highlights the traversed edge, updates the Inspector, and evaluates breakpoints.
+- **Continue**: Automatically advances through successive path steps at a configurable playback speed (250ms to 2000ms), respecting breakpoints and pause/stop requests.
+- **Pause**: Suspends automatic progression while preserving the current cursor position and event history.
+- **Previous**: Navigates to the preceding step for history inspection without altering path structure.
+- **Stop**: Halts active execution and cancels timers, retaining the session event log.
+- **Restart**: Resets the cursor back to the source node (Hop 0) with a new run identifier while preserving the complete session event history.
+- **Trace Playback Speed**: Configurable interval selector (Fast 250ms, Medium 500ms, Default 750ms, Slow 1.2s, Very Slow 2.0s) explicitly labeled as playback rate, not biological firing speed.
+
+### 4. Breakpoint System
+- Four distinct structural breakpoint conditions:
+  1. **Neuron Body ID**: Pauses when the trace reaches a specific neuron ID along the route.
+  2. **Hop Index**: Pauses when reaching a specific structural hop distance from the source.
+  3. **Anatomical Annotation**: Pauses when entering a neuron matching a configured cell type or superclass annotation.
+  4. **Recorded Connection Weight Threshold**: Pauses when traversing a directed edge whose recorded synapse count meets or exceeds a specified threshold ($\ge X$ synapses).
+- Initial-node breakpoint evaluation: breakpoints matching the source node (Hop 0) evaluate immediately at session creation, pausing at Step 0 with an explanation banner before auto-advance begins.
+- Breakpoint management: toggle enabled/disabled, view hit counts and last-hit step, and delete breakpoints dynamically.
+- Resumable: stepping or continuing after a breakpoint hit advances past the condition without infinite re-triggering loops.
+
+### 5. Execution Event Log & JSON Export
+- Monotonically increasing sequence IDs (`seq: 1, 2, 3...`) and ISO UTC timestamps.
+- Structured event types: `session_created`, `trace_started`, `node_entered`, `edge_traversed`, `step_advanced`, `history_navigation`, `breakpoint_created`, `breakpoint_toggled`, `breakpoint_removed`, `breakpoint_triggered`, `trace_paused`, `trace_resumed`, `trace_stopped`, `trace_completed`, and `trace_reset`.
+- Filterable timeline: filter by `All`, `Steps` (traversal events), or `Breakpoints`.
+- Click-to-inspect: clicking an event jumps the inspection cursor to that step without fabricating execution events.
+- **Export JSON**: One-click export of complete session metadata, route specification, breakpoint rules, event history, and scientific disclosures.
+
+---
+
 ## Version 3 Features
 
 ### 1. Pathway Tracer Workspace
@@ -219,6 +267,10 @@ npm run build --prefix frontend
 ## Scientific Assumptions and Limitations
 
 - **Structural connectivity ≠ biological signal propagation**: A directed graph path reveals anatomical wiring, but does not prove that an action potential traverses that route during a specific biological behavior.
+- **Trace execution ≠ physiological firing**: The Neural Debugger traverses recorded structural connections in the Janelia MaleCNS connectome. It does not execute a biophysical simulation of membrane voltage, ion channels, or action potentials.
+- **Breakpoints ≠ physiological firing thresholds**: A breakpoint pauses graph traversal because a structural condition (neuron ID, hop index, annotation, or recorded weight) matched. It does not indicate cellular activation.
+- **Playback speed ≠ conduction velocity**: Debugger playback intervals control how quickly the user interface advances along graph steps. They do not model physiological axonal conduction velocity or synaptic delay.
+- **Event history ≠ biological recording**: The execution event log documents software debugging operations and graph traversal events. It is not an in-vivo neurophysiological recording.
 - **Hop distance ≠ physical latency or time**: A graph hop is a synaptic junction step, not a physiological conduction delay or temporal duration.
 - **Synapse count ≠ conductance**: Connection weights represent recorded synaptic counts in the Janelia EM dataset, not electrical conductance, transmission probability, or synaptic efficacy.
 - **Weight heuristic ≠ calibrated probability**: The relative weight fraction metric is a structural prioritization tool within the loaded graph subset, not a physiological probability of post-synaptic firing.
@@ -233,7 +285,7 @@ npm run build --prefix frontend
 - V1 ✅ Connectome Explorer
 - V2 ✅ Enhanced Neuron Inspector & Connectivity Intelligence
 - V3 ✅ Neural Pathway Tracer & Downstream Cascade Analysis
-- V4 — Neural Debugger (synaptic breakpoint evaluation, activity traces)
+- V4 ✅ Neural Debugger (interactive structural path tracing, breakpoints & execution history)
 - V5 — Perturbation Lab (in-silico ablations, circuit rewiring)
 
 ---

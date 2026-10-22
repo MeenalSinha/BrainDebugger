@@ -7,13 +7,14 @@
  * All neuron data comes from the real MaleCNS v1.0 dataset via the backend API.
  */
 import React, { useCallback, useState } from 'react';
-import { Network, GitBranch } from 'lucide-react';
+import { Network, GitBranch, Bug } from 'lucide-react';
 import { StatusPill } from './components/StatusPill';
 import { ExplorerPanel } from './components/ExplorerPanel';
 import { ConnectomeView } from './components/ConnectomeView';
 import { InspectorPanel } from './components/InspectorPanel';
 import { PathwayTracer } from './components/PathwayTracer';
 import { PathwayGraphView } from './components/PathwayGraphView';
+import { NeuralDebugger } from './components/NeuralDebugger';
 import type {
   NeuronSearchResult,
   PathwaySearchResponse,
@@ -22,7 +23,7 @@ import type {
 } from './types';
 
 export default function App() {
-  const [workspace, setWorkspace] = useState<'explorer' | 'pathway'>('explorer');
+  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger'>('explorer');
   const [selectedBodyId, setSelectedBodyId] = useState<number | null>(null);
 
   // Pathway & Cascade state
@@ -101,6 +102,14 @@ export default function App() {
             <GitBranch size={14} />
             <span>Pathway Tracer</span>
           </button>
+          <button
+            className={`btn btn-sm ${workspace === 'debugger' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setWorkspace('debugger')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Bug size={14} />
+            <span>Neural Debugger</span>
+          </button>
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -118,9 +127,9 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Area: Three-Panel Layout */}
+      {/* Main Area */}
       <main className="main-area" role="main">
-        {workspace === 'explorer' ? (
+        {workspace === 'explorer' && (
           <>
             {/* Left: Explorer Panel */}
             <section className="panel" aria-label="Explorer panel">
@@ -161,7 +170,9 @@ export default function App() {
               />
             </section>
           </>
-        ) : (
+        )}
+
+        {workspace === 'pathway' && (
           <>
             {/* Left: Pathway Tracer Controls & Comparison Tables */}
             <section className="panel" aria-label="Pathway tracer panel">
@@ -172,6 +183,10 @@ export default function App() {
                 onActivePathChanged={setActivePath}
                 onCascadeCalculated={setCascadeData}
                 onModeChanged={setPathwayGraphMode}
+                onStartDebugging={(p) => {
+                  setActivePath(p);
+                  setWorkspace('debugger');
+                }}
                 externalSourceId={pathwaySourceId}
                 externalTargetId={pathwayTargetId}
                 externalCascadeRootId={cascadeRootId}
@@ -198,6 +213,47 @@ export default function App() {
                 onSetSource={handleSetPathwaySource}
                 onSetTarget={handleSetPathwayTarget}
                 onSetCascadeRoot={handleTraceCascade}
+              />
+            </section>
+
+            {/* Right: Inspector */}
+            <section
+              className="panel"
+              style={{ display: 'flex', flexDirection: 'column' }}
+              aria-label="Neuron inspector panel"
+            >
+              <InspectorPanel
+                bodyId={selectedBodyId}
+                onSelectPartner={handleSelectPartner}
+                onSetPathwaySource={handleSetPathwaySource}
+                onSetPathwayTarget={handleSetPathwayTarget}
+                onTraceCascade={handleTraceCascade}
+              />
+            </section>
+          </>
+        )}
+
+        {workspace === 'debugger' && (
+          <>
+            {/* Center/Left: Neural Debugger Canvas & Controls */}
+            <section
+              style={{
+                flex: 1,
+                position: 'relative',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                minWidth: 0,
+              }}
+              aria-label="Neural Debugger Workspace"
+            >
+              <NeuralDebugger
+                path={activePath || (pathwayData?.paths?.[0] ?? null)}
+                sourceId={pathwaySourceId || pathwayData?.source_body_id || null}
+                targetId={pathwayTargetId || pathwayData?.target_body_id || null}
+                selectedBodyId={selectedBodyId}
+                onSelectNeuron={handleSelectNode}
+                onBackToPathway={() => setWorkspace('pathway')}
               />
             </section>
 

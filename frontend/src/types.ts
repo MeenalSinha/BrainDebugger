@@ -258,3 +258,99 @@ export interface DownstreamCascadeResponse {
   scientific_qualification: string;
 }
 
+// ── V4: Neural Debugger & Trace Engine ──────────────────────────────────────
+
+export type TraceStatus = 'ready' | 'running' | 'paused' | 'completed' | 'stopped' | 'error';
+
+export type BreakpointType = 'neuron' | 'hop' | 'annotation' | 'weight';
+
+export interface Breakpoint {
+  id: string;
+  name: string;
+  type: BreakpointType;
+  enabled: boolean;
+  neuronBodyId?: number;
+  hopIndex?: number;
+  annotationField?: 'type' | 'superclass' | 'instance';
+  annotationValue?: string;
+  minWeightThreshold?: number;
+  hitCount: number;
+  lastHitStep?: number;
+}
+
+export type TraceEventType =
+  | 'session_created'
+  | 'trace_started'
+  | 'node_entered'
+  | 'edge_traversed'
+  | 'breakpoint_created'
+  | 'breakpoint_updated'
+  | 'breakpoint_toggled'
+  | 'breakpoint_removed'
+  | 'breakpoint_triggered'
+  | 'trace_paused'
+  | 'trace_resumed'
+  | 'step_advanced'
+  | 'history_navigation'
+  | 'trace_stopped'
+  | 'trace_completed'
+  | 'trace_reset'
+  | 'trace_error';
+
+export interface TraceEvent {
+  id: string;
+  sessionId: string;
+  runId: string;
+  sequenceNumber: number;
+  timestamp: string; // ISO 8601 UTC
+  type: TraceEventType;
+  step: number;
+  hopIndex: number;
+  currentNodeId?: number;
+  currentEdgeKey?: string;
+  breakpointId?: string;
+  breakpointDetails?: string;
+  description: string;
+  traceStatus: TraceStatus;
+}
+
+export interface TraceSession {
+  sessionId: string;
+  runId: string;
+  dataset: string;
+  sourceBodyId: number;
+  targetBodyId: number;
+  pathRank: number;
+  path: PathItem;
+  currentStep: number; // Index in path.nodes (0 .. path.nodes.length - 1)
+  status: TraceStatus;
+  breakpoints: Breakpoint[];
+  events: TraceEvent[];
+  createdAt: string;
+  lastTransitionAt: string;
+  playbackSpeedMs: number;
+  lastPausedReason?: string;
+}
+
+export interface ExportedTraceData {
+  exportVersion: string;
+  exportedAt: string;
+  session: {
+    sessionId: string;
+    runId: string;
+    dataset: string;
+    sourceBodyId: number;
+    targetBodyId: number;
+    pathRank: number;
+    totalHops: number;
+    totalSynapticWeight: number;
+    finalStatus: TraceStatus;
+    createdAt: string;
+    lastTransitionAt: string;
+  };
+  path: PathItem;
+  breakpoints: Breakpoint[];
+  events: TraceEvent[];
+  scientificQualifications: string[];
+}
+
