@@ -15,6 +15,7 @@ Instead of inspecting functions and variables, researchers inspect neurons, syna
 - **V0 — Foundation & Data Audit**: Backend data access, neuPrint/local Feather abstraction, API, configuration, and audit tests.
 - **V1 — Connectome Explorer**: Interactive three-panel interface (search/filter, Cytoscape.js neighborhood graph, basic inspector).
 - **V2 — Enhanced Neuron Inspector & Connectivity Intelligence**: Production-grade neuron inspector with collapsible profile sections, bi-directional connectivity intelligence summary, sortable/filterable/paginated connection tables with relative weight bars, honest scientific provenance disclosure, and race-condition-free async lifecycle.
+- **V3 — Neural Pathway Tracer & Downstream Cascade Analysis**: Dedicated workspace for tracing multi-hop directed structural pathways between arbitrary neurons, discovering and comparing alternative routes with shortest-hop and mathematically sound weight-prioritized rankings, and computing downstream reachability cascades grouped by hop distance with layer-by-layer graph visualization and full Inspector synchronization.
 
 ---
 
@@ -29,12 +30,12 @@ React + TypeScript + Vite + Cytoscape.js (frontend)
                  │
         Application Service
                  │
-     Local Feather Data Provider (Optimized in-memory indexing)
+     Local Feather Data Provider (Optimized in-memory contiguous indexing)
                  │
    MaleCNS v1.0 Feather Files (local)
 ```
 
-All authenticated data access happens on the backend. The frontend never touches dataset files or neuPrint credentials directly.
+All authenticated data access happens on the backend. The frontend never touches dataset files or neuPrint credentials directly. Outgoing connections are indexed contiguously in numpy slices (`_pre_index`) enabling sub-millisecond multi-hop graph traversals across 25.5 million connection records.
 
 ---
 
@@ -91,7 +92,7 @@ copy .env.example .env
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The backend loads and indexes the Feather files on startup (~12s load time with optimized body-stats filtering).
+The backend loads and indexes the Feather files on startup (~15s load time with contiguous graph adjacency indexing).
 
 ### Start the frontend
 
@@ -120,6 +121,45 @@ Interactive documentation is available at:
 | `/api/neurons/{body_id}/connectivity-summary` | GET | **(V2)** Retrieve bi-directional summary: partner count, total weights, body-stat synapses, and source dataset provenance. |
 | `/api/neurons/{body_id}/connections` | GET | **(V2)** Paginated, sortable, and filterable connections. Supports `direction` (`incoming`\|`outgoing`), `sort_by` (`weight`\|`partner_id`\|`partner_type`), `sort_order` (`asc`\|`desc`), `partner_id`, `partner_type`, `min_weight`, `limit`, and `offset`. |
 | `/api/neurons/{body_id}/neighborhood` | GET | Bounded 1-hop egocentric graph for Cytoscape.js visualization. |
+| `/api/paths` | GET | **(V3)** Search directed structural pathways between `source_body_id` and `target_body_id`. Parameters: `max_hops` (1–10), `max_paths` (1–20), `strategy` (`shortest`\|`weight_prioritized`), `min_weight`. Returns ordered nodes, directed edges, hop counts, total synaptic weights, and path ranking metrics. |
+| `/api/neurons/{body_id}/downstream-cascade` | GET | **(V3)** Bounded downstream reachability cascade analysis. Parameters: `max_hops` (1–6), `max_nodes` (10–2000), `max_edges` (10–5000), `min_weight`. Returns per-hop layer statistics, reachable nodes enriched with metadata, directed edges, and truncation status. |
+
+---
+
+## Version 3 Features
+
+### 1. Pathway Tracer Workspace
+- Accessible header workspace switcher between **Connectome Explorer** and **Pathway Tracer & Downstream Cascade**.
+- State preservation across workspace switches: selection, search queries, and graph views remain active.
+- Quick action buttons in the Neuron Inspector: **Set Source**, **Set Target**, and **Trace Cascade** to immediately transition from inspection to circuit tracing.
+
+### 2. Directed Shortest-Path & Alternative Routes
+- Directed BFS traversal strictly preserving presynaptic-to-postsynaptic edge orientation ($u \rightarrow v$).
+- Yen's K-shortest simple paths algorithm discovers up to $k$ structurally distinct simple routes without infinite cycle loops.
+- Exact edge case handling: source-equals-target returns a valid zero-hop path, and reversed-direction searches correctly report no qualifying directed path without inventing edges.
+- Route comparison table displaying rank, hop count, path structure, cumulative synaptic count, bottleneck synapse weight, and path score.
+- Clicking any route in the table highlights its specific nodes and edges in vibrant gold in the Cytoscape graph canvas.
+
+### 3. Mathematically Documented Weight-Prioritized Ranking
+- Outgoing connection weight fraction:
+  $$p(v \mid u) = \frac{w(u,v)}{\sum_{x \in O(u)} w(u,x)}$$
+- Total route transition score:
+  $$S(P) = \prod_{(u,v) \in P} p(v \mid u)$$
+- Optimized via strictly additive log-cost with Dijkstra's algorithm:
+  $$C(P) = -\sum_{(u,v) \in P} \ln p(v \mid u)$$
+- Scientific qualification: This heuristic prioritizes routes with higher relative outgoing synapse proportions within the traced connectome. It does not represent a calibrated biological action-potential transmission probability.
+
+### 4. Downstream Reachability Cascade Analysis
+- Directed breadth-first traversal determining the minimum structural hop distance from the root neuron.
+- Reconvergent route deduplication: each reachable neuron is placed exclusively in its earliest discovered hop layer without duplication.
+- Cycle safety: previously explored nodes are never re-enqueued, preventing infinite loops.
+- Comprehensive hop layer breakdown table: newly reached nodes, cumulative reachable nodes, layer edge count, and cumulative synaptic weight.
+- Strict limit enforcement (`max_hops`, `max_nodes`, `max_edges`) with clear partial-result warnings (`MAX_NODES_REACHED`, `MAX_EDGES_REACHED`).
+
+### 5. Interactive Cytoscape.js Graph & Inspector Integration
+- Layered hierarchical layout for cascades: root node in green halo, Hop 1 direct partners in cyan, Hop 2 in blue, Hop 3+ in purple.
+- Clicking any node in either pathway or cascade graphs immediately updates the Neuron Inspector with complete anatomical, neurotransmitter, and connectivity intelligence.
+- Hover tooltips and edge synapse count labels (`XX syn`) for clear quantitative inspection.
 
 ---
 
@@ -178,10 +218,12 @@ npm run build --prefix frontend
 
 ## Scientific Assumptions and Limitations
 
-- **Synapse count ≠ conductance**: Connection weights in the dataset represent recorded synaptic counts, not physiological conductance or synaptic strength.
-- **Excitatory/inhibitory caution**: Neurotransmitter predictions are machine-learning consensus predictions; physiological valence should not be assumed solely from synapse weight.
-- **Traced-only scope**: Edge records derive from `connectome-weights-male-cns-v1.0-minconf-0.5-traced-only.feather`. Neurons with few or zero traced partners may have untraced or unannotated biological connections not represented in this subset.
-- **Boundaries**: Neighborhood graphs display bounded egocentric subsets (`MAX_GRAPH_NODES`), not the entire 25.5M edge network.
+- **Structural connectivity ≠ biological signal propagation**: A directed graph path reveals anatomical wiring, but does not prove that an action potential traverses that route during a specific biological behavior.
+- **Hop distance ≠ physical latency or time**: A graph hop is a synaptic junction step, not a physiological conduction delay or temporal duration.
+- **Synapse count ≠ conductance**: Connection weights represent recorded synaptic counts in the Janelia EM dataset, not electrical conductance, transmission probability, or synaptic efficacy.
+- **Weight heuristic ≠ calibrated probability**: The relative weight fraction metric is a structural prioritization tool within the loaded graph subset, not a physiological probability of post-synaptic firing.
+- **Traced-only scope**: Edge records derive from `connectome-weights-male-cns-v1.0-minconf-0.5-traced-only.feather`. Neurons with few or zero traced partners may possess untraced or unannotated biological connections not represented in this subset. Absence of a route within the configured search limits means "no qualifying route was found within the searched graph and configured limits," not that the neurons are biologically disconnected.
+- **Excitatory/inhibitory caution**: Neurotransmitter predictions are machine-learning consensus predictions; physiological sign (excitation vs inhibition) cannot be determined solely from synapse counts.
 
 ---
 
@@ -190,7 +232,7 @@ npm run build --prefix frontend
 - V0 ✅ Foundation & Data Audit
 - V1 ✅ Connectome Explorer
 - V2 ✅ Enhanced Neuron Inspector & Connectivity Intelligence
-- V3 — Neural Pathway Tracer (multi-hop pathfinding, downstream cascade analysis)
+- V3 ✅ Neural Pathway Tracer & Downstream Cascade Analysis
 - V4 — Neural Debugger (synaptic breakpoint evaluation, activity traces)
 - V5 — Perturbation Lab (in-silico ablations, circuit rewiring)
 

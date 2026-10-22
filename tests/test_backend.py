@@ -562,6 +562,232 @@ class TestV2ConnectionSortingFilteringPagination:
         assert c.superclass_post == "super_gaba"
 
 
+# ── V3 Pathway Tracer Unit Tests ─────────────────────────────────────────────
+
+class TestV3PathwayTracer:
+    """Unit tests for directed shortest-path and alternative-path algorithms."""
+
+    def _make_graph_provider(self):
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        from pathlib import Path
+
+        # Graph with branches and a cycle:
+        # 1 -> 2 (w=10), 1 -> 3 (w=5)  [tot_out(1)=15]
+        # 2 -> 4 (w=20), 2 -> 3 (w=2), 2 -> 1 (w=5 cycle) [tot_out(2)=27]
+        # 3 -> 4 (w=15) [tot_out(3)=15]
+        # 5 -> isolated
+        annotations = pd.DataFrame({
+            "bodyId": [1, 2, 3, 4, 5],
+            "type": ["Type1", "Type2", "Type3", "Type4", "Type5"],
+            "instance": ["inst1", "inst2", "inst3", "inst4", "inst5"],
+            "superclass": ["super1", "super2", "super3", "super4", "super5"],
+            "status": ["Traced"] * 5,
+            "statusLabel": ["Traced"] * 5,
+            "somaSide": ["L"] * 5,
+            "somaNeuromere": [None] * 5,
+            "subclass": [None] * 5,
+            "hemibrainType": [None] * 5,
+        }).set_index("bodyId", drop=False)
+
+        weights = pd.DataFrame({
+            "body_pre": [1, 1, 2, 2, 2, 3],
+            "body_post": [2, 3, 4, 3, 1, 4],
+            "weight": [10, 5, 20, 2, 5, 15],
+            "type_pre": ["Type1", "Type1", "Type2", "Type2", "Type2", "Type3"],
+            "type_post": ["Type2", "Type3", "Type4", "Type3", "Type1", "Type4"],
+        })
+
+        p = LocalFeatherProvider(Path("./data"))
+        p._annotations = annotations
+        p._weights = weights
+        p._loaded = True
+        return p
+
+    def test_same_node_zero_hops(self):
+        p = self._make_graph_provider()
+        res = p.find_paths(source_body_id=1, target_body_id=1)
+        assert res.status == "same_node"
+        assert res.returned_count == 1
+        path = res.paths[0]
+        assert path.hops == 0
+        assert len(path.nodes) == 1
+        assert path.nodes[0].body_id == 1
+        assert len(path.edges) == 0
+        assert path.total_weight == 0
+
+    def test_direct_one_hop_path(self):
+        p = self._make_graph_provider()
+        res = p.find_paths(source_body_id=1, target_body_id=2, max_paths=1)
+        assert res.status == "found"
+        assert res.returned_count == 1
+        path = res.paths[0]
+        assert path.hops == 1
+        assert [n.body_id for n in path.nodes] == [1, 2]
+        assert len(path.edges) == 1
+        assert path.edges[0].body_pre == 1
+        assert path.edges[0].body_post == 2
+        assert path.edges[0].weight == 10
+
+    def test_multihop_shortest_path(self):
+        p = self._make_graph_provider()
+        res = p.find_paths(source_body_id=1, target_body_id=4, max_paths=1, strategy="shortest")
+        assert res.status == "found"
+        path = res.paths[0]
+        assert path.hops == 2  # 1 -> 2 -> 4 or 1 -> 3 -> 4
+        assert path.nodes[0].body_id == 1
+        assert path.nodes[-1].body_id == 4
+
+    def test_alternative_paths_distinct_and_bounded(self):
+        p = self._make_graph_provider()
+        res = p.find_paths(source_body_id=1, target_body_id=4, max_paths=3, strategy="shortest")
+        assert res.status == "found"
+        assert res.returned_count == 3
+        # Should find [1, 2, 4], [1, 3, 4], [1, 2, 3, 4]
+        node_sequences = [[n.body_id for n in p_item.nodes] for p_item in res.paths]
+        assert len(node_sequences) == 3
+        assert [1, 2, 4] in node_sequences
+        assert [1, 3, 4] in node_sequences
+        assert [1, 2, 3, 4] in node_sequences
+        # Ranks are 1, 2, 3
+        assert [p_item.rank for p_item in res.paths] == [1, 2, 3]
+
+    def test_reversed_direction_no_path(self):
+        p = self._make_graph_provider()
+        # 4 has no outgoing edges, so 4 -> 1 has no directed path
+        res = p.find_paths(source_body_id=4, target_body_id=1)
+        assert res.status == "no_path_found"
+        assert res.returned_count == 0
+        assert len(res.paths) == 0
+
+    def test_cycle_avoidance(self):
+        p = self._make_graph_provider()
+        # Cycle exists: 1 -> 2 -> 1. Simple paths must not repeat any node.
+        res = p.find_paths(source_body_id=1, target_body_id=4, max_paths=5)
+        for p_item in res.paths:
+            node_ids = [n.body_id for n in p_item.nodes]
+            assert len(node_ids) == len(set(node_ids)), f"Cycle detected in simple path: {node_ids}"
+
+    def test_weight_prioritized_ranking_mathematical_score(self):
+        p = self._make_graph_provider()
+        res = p.find_paths(source_body_id=1, target_body_id=4, max_paths=3, strategy="weight_prioritized")
+        assert res.status == "found"
+        assert res.returned_count >= 1
+
+        top_path = res.paths[0]
+        # For [1, 2, 4]:
+        # p(2|1) = 10/15 = 2/3
+        # p(4|2) = 20/27
+        # Expected Score = (2/3) * (20/27) = 40/81 = ~0.4938
+        assert [n.body_id for n in top_path.nodes] == [1, 2, 4]
+        assert top_path.score is not None
+        assert abs(top_path.score - (40.0 / 81.0)) < 1e-4
+        assert top_path.log_cost is not None
+        import math
+        assert abs(top_path.log_cost - (-math.log(40.0 / 81.0))) < 1e-4
+
+    def test_min_weight_filter_pathway(self):
+        p = self._make_graph_provider()
+        # If min_weight=12, edge (1,2) with w=10 and (1,3) with w=5 are filtered out
+        res = p.find_paths(source_body_id=1, target_body_id=4, min_weight=12)
+        assert res.status == "no_path_found"
+
+
+# ── V3 Downstream Cascade Unit Tests ─────────────────────────────────────────
+
+class TestV3DownstreamCascade:
+    """Unit tests for downstream structural cascade analysis."""
+
+    def _make_graph_provider(self):
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        from pathlib import Path
+
+        # Node 1 -> 2 (w=10), 1 -> 3 (w=20)   [Hop 1]
+        # Node 2 -> 4 (w=30), 3 -> 4 (w=40), 2 -> 5 (w=5) [Hop 2]
+        # Node 4 -> 6 (w=50)                  [Hop 3]
+        annotations = pd.DataFrame({
+            "bodyId": [1, 2, 3, 4, 5, 6],
+            "type": [f"Type{i}" for i in range(1, 7)],
+            "instance": [f"inst{i}" for i in range(1, 7)],
+            "superclass": ["super"] * 6,
+            "status": ["Traced"] * 6,
+            "statusLabel": ["Traced"] * 6,
+            "somaSide": ["L"] * 6,
+            "somaNeuromere": [None] * 6,
+            "subclass": [None] * 6,
+            "hemibrainType": [None] * 6,
+        }).set_index("bodyId", drop=False)
+
+        weights = pd.DataFrame({
+            "body_pre": [1, 1, 2, 3, 2, 4],
+            "body_post": [2, 3, 4, 4, 5, 6],
+            "weight": [10, 20, 30, 40, 5, 50],
+            "type_pre": ["Type1", "Type1", "Type2", "Type3", "Type2", "Type4"],
+            "type_post": ["Type2", "Type3", "Type4", "Type4", "Type5", "Type6"],
+        })
+
+        p = LocalFeatherProvider(Path("./data"))
+        p._annotations = annotations
+        p._weights = weights
+        p._loaded = True
+        return p
+
+    def test_cascade_hop_layer_metrics(self):
+        p = self._make_graph_provider()
+        res = p.compute_downstream_cascade(source_body_id=1, max_hops=3)
+        assert res.is_truncated is False
+        assert res.total_unique_nodes == 6
+        assert len(res.layers) == 4  # Hop 0, 1, 2, 3
+
+        # Hop 0: source node
+        assert res.layers[0].hop == 0
+        assert res.layers[0].newly_reached_nodes == 1
+        assert res.layers[0].cumulative_nodes == 1
+
+        # Hop 1: nodes 2 and 3
+        assert res.layers[1].hop == 1
+        assert res.layers[1].newly_reached_nodes == 2
+        assert res.layers[1].cumulative_nodes == 3
+
+        # Hop 2: nodes 4 and 5
+        assert res.layers[2].hop == 2
+        assert res.layers[2].newly_reached_nodes == 2
+        assert res.layers[2].cumulative_nodes == 5
+
+        # Hop 3: node 6
+        assert res.layers[3].hop == 3
+        assert res.layers[3].newly_reached_nodes == 1
+        assert res.layers[3].cumulative_nodes == 6
+
+    def test_reconvergent_routes_no_duplicate_nodes(self):
+        p = self._make_graph_provider()
+        # Node 4 is reached from both 2 and 3; must only be counted once at hop 2
+        res = p.compute_downstream_cascade(source_body_id=1, max_hops=2)
+        node_ids = [n.body_id for n in res.nodes]
+        assert len(node_ids) == len(set(node_ids))
+        node_4 = next(n for n in res.nodes if n.body_id == 4)
+        assert node_4.hop == 2
+
+    def test_cascade_max_nodes_truncation(self):
+        p = self._make_graph_provider()
+        # With max_nodes=3, source(1) + hop1(2,3) hits limit
+        res = p.compute_downstream_cascade(source_body_id=1, max_hops=3, max_nodes=3)
+        assert res.is_truncated is True
+        assert res.truncation_reason == "max_nodes_reached"
+        assert res.total_unique_nodes <= 3
+
+    def test_cascade_min_weight_filter(self):
+        p = self._make_graph_provider()
+        # If min_weight=15, edge 1 -> 2 (w=10) and 2 -> 5 (w=5) are excluded
+        res = p.compute_downstream_cascade(source_body_id=1, max_hops=3, min_weight=15)
+        node_ids = {n.body_id for n in res.nodes}
+        assert 2 not in node_ids
+        assert 5 not in node_ids
+        assert 3 in node_ids  # w=20
+
+
+
 
 # ── Integration tests (opt-in, require local Feather files) ───────────────────
 
@@ -736,4 +962,50 @@ class TestRealDataIntegration:
         filtered = p.get_connections(body_id=body_id, direction="outgoing", limit=10, partner_id=sample_partner)
         assert filtered.total_matched >= 1
         assert all(c.body_post == sample_partner for c in filtered.connections)
+
+    def test_v3_real_data_path_search(self):
+        p = self._get_loaded_provider()
+        # Dynamically find a source neuron
+        result = p.search("DNp01", limit=1)
+        src = result.results[0].body_id
+
+        # Find a 2-hop target dynamically
+        conns_1 = p.get_connections(body_id=src, direction="outgoing", limit=5)
+        assert len(conns_1.connections) > 0
+        hop1_node = conns_1.connections[0].body_post
+
+        conns_2 = p.get_connections(body_id=hop1_node, direction="outgoing", limit=5)
+        assert len(conns_2.connections) > 0
+        hop2_node = conns_2.connections[0].body_post
+
+        # Search path from src to hop2_node
+        res = p.find_paths(source_body_id=src, target_body_id=hop2_node, max_hops=4, max_paths=2)
+        assert res.status == "found"
+        assert res.returned_count >= 1
+        path = res.paths[0]
+        assert path.nodes[0].body_id == src
+        assert path.nodes[-1].body_id == hop2_node
+        # Every edge must exist and connect consecutive nodes
+        for i, edge in enumerate(path.edges):
+            assert edge.body_pre == path.nodes[i].body_id
+            assert edge.body_post == path.nodes[i + 1].body_id
+            assert edge.weight > 0
+
+    def test_v3_real_data_downstream_cascade(self):
+        p = self._get_loaded_provider()
+        result = p.search("DNp01", limit=1)
+        src = result.results[0].body_id
+
+        cascade = p.compute_downstream_cascade(source_body_id=src, max_hops=2, max_nodes=500, max_edges=1000)
+        assert cascade.source_body_id == src
+        assert cascade.total_unique_nodes > 1
+        assert len(cascade.layers) >= 2
+        # Layer 0 has exactly the source neuron
+        assert cascade.layers[0].hop == 0
+        assert cascade.layers[0].newly_reached_nodes == 1
+        assert cascade.layers[0].cumulative_nodes == 1
+        # Every node has valid hop distance
+        for node in cascade.nodes:
+            assert 0 <= node.hop <= 2
+
 

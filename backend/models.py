@@ -8,6 +8,7 @@ the real dataset and must NOT be substituted with invented values.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
@@ -251,3 +252,126 @@ class ErrorDetail(BaseModel):
     error: str
     message: str
     dataset: Optional[str] = None
+
+
+# ── V3: Pathway Tracer & Downstream Cascade ─────────────────────────────────
+
+class PathRankingStrategy(str, Enum):
+    SHORTEST = "shortest"
+    WEIGHT_PRIORITIZED = "weight_prioritized"
+
+
+class PathNode(BaseModel):
+    """A neuron node along a traced pathway."""
+    body_id: int
+    type: Optional[str] = None
+    instance: Optional[str] = None
+    superclass: Optional[str] = None
+    hop: int
+
+
+class PathEdge(BaseModel):
+    """A directed synaptic edge along a traced pathway."""
+    body_pre: int
+    body_post: int
+    weight: int
+    type_pre: Optional[str] = None
+    type_post: Optional[str] = None
+    instance_pre: Optional[str] = None
+    instance_post: Optional[str] = None
+    relative_weight_fraction: Optional[float] = None  # p(post|pre)
+
+
+class PathItem(BaseModel):
+    """A single directed pathway between source and target."""
+    rank: int
+    hops: int
+    nodes: list[PathNode]
+    edges: list[PathEdge]
+    score: Optional[float] = None
+    log_cost: Optional[float] = None
+    total_weight: int
+    bottleneck_weight: int
+
+
+class PathwaySearchResponse(BaseModel):
+    """Response containing calculated directed pathways between two neurons."""
+    source_body_id: int
+    target_body_id: int
+    strategy: str  # 'shortest' | 'weight_prioritized'
+    max_hops: int
+    max_paths: int
+    paths: list[PathItem]
+    returned_count: int
+    status: str  # 'found' | 'no_path_found' | 'same_node' | 'partial'
+    is_partial: bool = False
+    limit_reason: Optional[str] = None
+    explored_nodes: int = 0
+    explored_edges: int = 0
+    dataset: str = "male-cns:v1.0"
+    source_file: str = "connectome-weights-male-cns-v1.0-minconf-0.5-traced-only.feather"
+    coverage_notice: str = (
+        "Pathways reflect directed connections present in the male-cns:v1.0 traced-only "
+        "dataset (min confidence 0.5). Absence of a route does not prove biological independence."
+    )
+    scientific_qualification: str = (
+        "Shortest structural paths reflect fewest recorded synaptic hops. Weight-prioritized "
+        "routes optimize relative transition fractions p(v|u) = w(u,v)/sum(w(u,*)) within the "
+        "traced subset. These are graph heuristics, not physiological signal propagation simulations."
+    )
+
+
+class CascadeHopLayer(BaseModel):
+    """Summary metrics for a single hop distance in the downstream cascade."""
+    hop: int
+    newly_reached_nodes: int
+    cumulative_nodes: int
+    layer_edges: int
+    layer_weight: int
+
+
+class CascadeNode(BaseModel):
+    """A reachable neuron node in a downstream cascade."""
+    body_id: int
+    type: Optional[str] = None
+    instance: Optional[str] = None
+    superclass: Optional[str] = None
+    hop: int
+    in_degree: int = 0
+    out_degree: int = 0
+
+
+class CascadeEdge(BaseModel):
+    """A directed synaptic edge represented in the downstream cascade."""
+    body_pre: int
+    body_post: int
+    weight: int
+    pre_hop: int
+    post_hop: int
+
+
+class DownstreamCascadeResponse(BaseModel):
+    """Downstream structural reachability cascade from a source neuron."""
+    source_body_id: int
+    max_hops: int
+    max_nodes: int
+    max_edges: int
+    min_weight: Optional[int] = None
+    total_unique_nodes: int
+    total_edges: int
+    layers: list[CascadeHopLayer]
+    nodes: list[CascadeNode]
+    edges: list[CascadeEdge]
+    is_truncated: bool = False
+    truncation_reason: Optional[str] = None
+    dataset: str = "male-cns:v1.0"
+    source_file: str = "connectome-weights-male-cns-v1.0-minconf-0.5-traced-only.feather"
+    coverage_notice: str = (
+        "Cascade layers reflect minimum structural graph distance over outgoing edges "
+        "in the male-cns:v1.0 traced-only dataset (min confidence 0.5)."
+    )
+    scientific_qualification: str = (
+        "Hop distance is a structural graph metric, not a biological latency or temporal sequence. "
+        "Reachable nodes represent the structural subgraph, not simulated neural firing."
+    )
+

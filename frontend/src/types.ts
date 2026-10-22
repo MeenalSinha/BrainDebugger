@@ -159,3 +159,102 @@ export type AsyncState<T> =
   | { status: 'loading' }
   | { status: 'success'; data: T }
   | { status: 'error'; message: string };
+
+// ── V3: Pathway Tracer & Downstream Cascade ─────────────────────────────────
+
+export type PathRankingStrategy = 'shortest' | 'weight_prioritized';
+
+export interface PathNode {
+  body_id: number;
+  type: string | null;
+  instance: string | null;
+  superclass: string | null;
+  hop: number;
+}
+
+export interface PathEdge {
+  body_pre: number;
+  body_post: number;
+  weight: number;
+  type_pre: string | null;
+  type_post: string | null;
+  instance_pre: string | null;
+  instance_post: string | null;
+  relative_weight_fraction: number | null;
+}
+
+export interface PathItem {
+  rank: number;
+  hops: number;
+  nodes: PathNode[];
+  edges: PathEdge[];
+  score: number | null;
+  log_cost: number | null;
+  total_weight: number;
+  bottleneck_weight: number;
+}
+
+export interface PathwaySearchResponse {
+  source_body_id: number;
+  target_body_id: number;
+  strategy: string;
+  max_hops: number;
+  max_paths: number;
+  paths: PathItem[];
+  returned_count: number;
+  status: 'found' | 'no_path_found' | 'same_node' | 'partial';
+  is_partial: boolean;
+  limit_reason: string | null;
+  explored_nodes: number;
+  explored_edges: number;
+  dataset: string;
+  source_file: string;
+  coverage_notice: string;
+  scientific_qualification: string;
+}
+
+export interface CascadeHopLayer {
+  hop: number;
+  newly_reached_nodes: number;
+  cumulative_nodes: number;
+  layer_edges: number;
+  layer_weight: number;
+}
+
+export interface CascadeNode {
+  body_id: number;
+  type: string | null;
+  instance: string | null;
+  superclass: string | null;
+  hop: number;
+  in_degree: number;
+  out_degree: number;
+}
+
+export interface CascadeEdge {
+  body_pre: number;
+  body_post: number;
+  weight: number;
+  pre_hop: number;
+  post_hop: number;
+}
+
+export interface DownstreamCascadeResponse {
+  source_body_id: number;
+  max_hops: number;
+  max_nodes: number;
+  max_edges: number;
+  min_weight: number | null;
+  total_unique_nodes: number;
+  total_edges: number;
+  layers: CascadeHopLayer[];
+  nodes: CascadeNode[];
+  edges: CascadeEdge[];
+  is_truncated: boolean;
+  truncation_reason: string | null;
+  dataset: string;
+  source_file: string;
+  coverage_notice: string;
+  scientific_qualification: string;
+}
+

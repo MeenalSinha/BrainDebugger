@@ -19,6 +19,9 @@ import type {
 interface Props {
   bodyId: number | null;
   onSelectPartner: (bodyId: number) => void;
+  onSetPathwaySource?: (bodyId: number) => void;
+  onSetPathwayTarget?: (bodyId: number) => void;
+  onTraceCascade?: (bodyId: number) => void;
 }
 
 // ── Helper: Format a field or show unavailable ────────────────────────────────
@@ -456,7 +459,13 @@ function ConnectionTableSection({
 }
 
 // ── Main InspectorPanel Component ─────────────────────────────────────────────
-export function InspectorPanel({ bodyId, onSelectPartner }: Props) {
+export function InspectorPanel({
+  bodyId,
+  onSelectPartner,
+  onSetPathwaySource,
+  onSetPathwayTarget,
+  onTraceCascade,
+}: Props) {
   const [neuronState, setNeuronState] = useState<AsyncState<Neuron>>({ status: 'idle' });
   const [summaryState, setSummaryState] = useState<AsyncState<ConnectivitySummaryResponse>>({ status: 'idle' });
   const [activeTab, setActiveTab] = useState<'outgoing' | 'incoming'>('outgoing');
@@ -589,6 +598,41 @@ export function InspectorPanel({ bodyId, onSelectPartner }: Props) {
               </span>
             )}
           </div>
+
+          {(onSetPathwaySource || onSetPathwayTarget || onTraceCascade) && bodyId && (
+            <div className="identity-actions-row" style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {onSetPathwaySource && (
+                <button
+                  type="button"
+                  className="btn btn-xs btn-outline"
+                  onClick={() => onSetPathwaySource(bodyId)}
+                  title="Use as Pathway Source"
+                >
+                  Set Source
+                </button>
+              )}
+              {onSetPathwayTarget && (
+                <button
+                  type="button"
+                  className="btn btn-xs btn-outline"
+                  onClick={() => onSetPathwayTarget(bodyId)}
+                  title="Use as Pathway Target"
+                >
+                  Set Target
+                </button>
+              )}
+              {onTraceCascade && (
+                <button
+                  type="button"
+                  className="btn btn-xs btn-outline"
+                  onClick={() => onTraceCascade(bodyId)}
+                  title="Trace Downstream Cascade"
+                >
+                  Trace Cascade
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Connectivity Intelligence Overview */}

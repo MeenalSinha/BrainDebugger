@@ -19,11 +19,13 @@ from backend.data_provider import LocalFeatherProvider
 from backend.models import (
     ConnectionListResponse,
     ConnectivitySummaryResponse,
+    DownstreamCascadeResponse,
     ErrorDetail,
     GraphResponse,
     HealthResponse,
     Neuron,
     NeuronSearchResponse,
+    PathwaySearchResponse,
 )
 from backend.service import ConnectomeService
 
@@ -302,3 +304,123 @@ async def get_neighborhood(
     except Exception as exc:
         logger.error("Neighborhood failed: body_id=%d %s", body_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "query_failed", "message": str(exc)})
+
+
+# ── V3: Pathway Tracer & Downstream Cascade Endpoints ───────────────────────
+
+@app.get(
+    "/api/paths",
+    response_model=PathwaySearchResponse,
+    responses={
+        400: {"model": ErrorDetail},
+        404: {"model": ErrorDetail},
+        500: {"model": ErrorDetail},
+        503: {"model": ErrorDetail},
+    },
+    summary="Search directed pathways between source and target neurons",
+    tags=["Pathways"],
+)
+async def find_paths(
+    source_body_id: int = Query(..., description="Source presynaptic neuron body ID"),
+    target_body_id: int = Query(..., description="Target postsynaptic neuron body ID"),
+    max_hops: int = Query(5, ge=1, le=10, description="Maximum path length in synaptic hops"),
+    max_paths: int = Query(3, ge=1, le=20, description="Maximum alternative paths to return"),
+    strategy: str = Query("shortest", description="Ranking strategy: 'shortest' or 'weight_prioritized'"),
+    min_weight: Optional[int] = Query(None, ge=1, description="Optional minimum synapse weight threshold per edge"),
+    svc: ServiceDep = None,
+) -> PathwaySearchResponse:
+    """
+    Finds directed structural pathways from source_body_id to target_body_id.
+    Preserves exact edge direction (source -> intermediate -> target).
+    Supports shortest structural paths (fewest hops) and relative weight-prioritized routing.
+    """
+    if strategy not in ("shortest", "weight_prioritized"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_strategy",
+                "message": f"Strategy '{strategy}' is invalid. Allowed: 'shortest', 'weight_prioritized'.",
+            },
+        )
+    try:
+        return svc.find_paths(
+            source_body_id=source_body_id,
+            target_body_id=target_body_id,
+            max_hops=max_hops,
+            max_paths=max_paths,
+            strategy=strategy,
+            min_weight=min_weight,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": str(exc)},
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_parameters", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.error(
+            "Path search failed: source=%d target=%d %s",
+            source_body_id,
+            target_body_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail={"error": "path_search_failed", "message": str(exc)})
+
+
+@app.get(
+    "/api/neurons/{body_id}/downstream-cascade",
+    response_model=DownstreamCascadeResponse,
+    responses={
+        400: {"model": ErrorDetail},
+        404: {"model": ErrorDetail},
+        500: {"model": ErrorDetail},
+        503: {"model": ErrorDetail},
+    },
+    summary="Compute downstream structural reachability cascade from a source neuron",
+    tags=["Cascade"],
+)
+async def compute_downstream_cascade(
+    body_id: int,
+    svc: ServiceDep,
+    max_hops: int = Query(3, ge=1, le=6, description="Maximum hop depth to traverse downstream"),
+    max_nodes: int = Query(300, ge=10, le=1000, description="Maximum visited nodes limit"),
+    max_edges: int = Query(600, ge=10, le=2000, description="Maximum included edges limit"),
+    min_weight: Optional[int] = Query(None, ge=1, description="Optional minimum synapse weight threshold per edge"),
+) -> DownstreamCascadeResponse:
+    """
+    Traverses outgoing directed connections from body_id to identify reachable downstream neurons.
+    Organizes results into minimum structural graph distance layers (hop 0, 1, 2, ...).
+    Reconvergent routes and cycles are handled safely without duplicating nodes.
+    """
+    try:
+        return svc.compute_downstream_cascade(
+            source_body_id=body_id,
+            max_hops=max_hops,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+            min_weight=min_weight,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": str(exc)},
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_parameters", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.error(
+            "Downstream cascade failed: body_id=%d %s",
+            body_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail={"error": "cascade_failed", "message": str(exc)})
+

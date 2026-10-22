@@ -16,10 +16,12 @@ from backend.models import (
     ConnectionListResponse,
     ConnectivitySummaryResponse,
     DataSourceStatus,
+    DownstreamCascadeResponse,
     GraphResponse,
     HealthResponse,
     Neuron,
     NeuronSearchResponse,
+    PathwaySearchResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,3 +146,59 @@ class ConnectomeService:
             max_nodes=effective_max_nodes,
             max_edges_per_direction=max_edges_per_dir,
         )
+
+    # ── Pathway search ────────────────────────────────────────────────────────
+
+    def find_paths(
+        self,
+        source_body_id: int,
+        target_body_id: int,
+        max_hops: int = 5,
+        max_paths: int = 3,
+        strategy: str = "shortest",
+        min_weight: Optional[int] = None,
+    ) -> PathwaySearchResponse:
+        logger.info(
+            "Find paths: source=%d target=%d max_hops=%d max_paths=%d strategy=%s min_weight=%s",
+            source_body_id,
+            target_body_id,
+            max_hops,
+            max_paths,
+            strategy,
+            min_weight,
+        )
+        return self._provider.find_paths(
+            source_body_id=source_body_id,
+            target_body_id=target_body_id,
+            max_hops=max_hops,
+            max_paths=max_paths,
+            strategy=strategy,
+            min_weight=min_weight,
+        )
+
+    # ── Downstream cascade ────────────────────────────────────────────────────
+
+    def compute_downstream_cascade(
+        self,
+        source_body_id: int,
+        max_hops: int = 3,
+        max_nodes: int = 300,
+        max_edges: int = 600,
+        min_weight: Optional[int] = None,
+    ) -> DownstreamCascadeResponse:
+        logger.info(
+            "Downstream cascade: source=%d max_hops=%d max_nodes=%d max_edges=%d min_weight=%s",
+            source_body_id,
+            max_hops,
+            max_nodes,
+            max_edges,
+            min_weight,
+        )
+        return self._provider.compute_downstream_cascade(
+            source_body_id=source_body_id,
+            max_hops=max_hops,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+            min_weight=min_weight,
+        )
+

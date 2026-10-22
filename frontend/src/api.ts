@@ -9,15 +9,17 @@
 import type {
   ConnectionListResponse,
   ConnectivitySummaryResponse,
+  DownstreamCascadeResponse,
   GraphResponse,
   HealthResponse,
   Neuron,
   NeuronSearchResponse,
+  PathwaySearchResponse,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
 
-class ApiClientError extends Error {
+export class ApiClientError extends Error {
   constructor(
     public readonly status: number,
     public readonly detail: string,
@@ -33,7 +35,19 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
     let detail = `HTTP ${res.status}`;
     try {
       const body = await res.json();
-      detail = body?.detail?.message || body?.message || body?.detail || detail;
+      if (body) {
+        if (typeof body.detail === 'string') {
+          detail = body.detail;
+        } else if (Array.isArray(body.detail)) {
+          detail = body.detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ');
+        } else if (body.detail?.message) {
+          detail = body.detail.message;
+        } else if (body.message) {
+          detail = body.message;
+        } else if (typeof body.detail === 'object') {
+          detail = JSON.stringify(body.detail);
+        }
+      }
     } catch { /* ignore */ }
     throw new ApiClientError(res.status, detail);
   }
@@ -103,6 +117,37 @@ export const api = {
       signal,
     );
   },
-};
 
-export { ApiClientError };
+  findPaths(params: {
+    sourceBodyId: number;
+    targetBodyId: number;
+    maxHops?: number;
+    maxPaths?: number;
+    strategy?: string;
+    minWeight?: number;
+  }, signal?: AbortSignal): Promise<PathwaySearchResponse> {
+    const p = new URLSearchParams();
+    p.set('source_body_id', String(params.sourceBodyId));
+    p.set('target_body_id', String(params.targetBodyId));
+    if (params.maxHops !== undefined) p.set('max_hops', String(params.maxHops));
+    if (params.maxPaths !== undefined) p.set('max_paths', String(params.maxPaths));
+    if (params.strategy !== undefined) p.set('strategy', params.strategy);
+    if (params.minWeight !== undefined) p.set('min_weight', String(params.minWeight));
+    return get<PathwaySearchResponse>(`/api/paths?${p}`, signal);
+  },
+
+  getDownstreamCascade(params: {
+    bodyId: number;
+    maxHops?: number;
+    maxNodes?: number;
+    maxEdges?: number;
+    minWeight?: number;
+  }, signal?: AbortSignal): Promise<DownstreamCascadeResponse> {
+    const p = new URLSearchParams();
+    if (params.maxHops !== undefined) p.set('max_hops', String(params.maxHops));
+    if (params.maxNodes !== undefined) p.set('max_nodes', String(params.maxNodes));
+    if (params.maxEdges !== undefined) p.set('max_edges', String(params.maxEdges));
+    if (params.minWeight !== undefined) p.set('min_weight', String(params.minWeight));
+    return get<DownstreamCascadeResponse>(`/api/neurons/${params.bodyId}/downstream-cascade?${p}`, signal);
+  },
+};
