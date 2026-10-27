@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ── Neuron ───────────────────────────────────────────────────────────────────
@@ -374,4 +374,143 @@ class DownstreamCascadeResponse(BaseModel):
         "Hop distance is a structural graph metric, not a biological latency or temporal sequence. "
         "Reachable nodes represent the structural subgraph, not simulated neural firing."
     )
+
+
+# ── V5: Perturbation Lab Models ─────────────────────────────────────────────
+
+class DisabledNeuron(BaseModel):
+    """A neuron excluded in an intervention overlay."""
+    body_id: int
+    label: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class DisabledEdge(BaseModel):
+    """A directed synaptic connection excluded in an intervention overlay."""
+    body_pre: int
+    body_post: int
+    weight: Optional[int] = None
+    label: Optional[str] = None
+
+
+class InterventionConfig(BaseModel):
+    """Collection of non-destructive structural interventions applied to a graph view."""
+    disabled_neurons: list[int] = Field(default_factory=list)
+    disabled_edges: list[DisabledEdge] = Field(default_factory=list)
+    analysis_scope: str = "path_and_cascade"  # 'path_and_cascade' | 'path' | 'cascade' | 'neighborhood'
+    experiment_name: Optional[str] = None
+    random_seed: Optional[int] = None
+
+
+class PerturbationValidationResponse(BaseModel):
+    """Validation report checking if requested intervention elements exist in data source."""
+    valid: bool
+    verified_neurons: list[int]
+    unverified_neurons: list[int]
+    verified_edges: list[DisabledEdge]
+    unverified_edges: list[DisabledEdge]
+    incident_edges_disabled_count: int
+    message: str
+
+
+class PathComparisonResult(BaseModel):
+    """Comparison of source-to-target path availability before and after interventions."""
+    source_body_id: int
+    target_body_id: int
+    strategy: str = "shortest"
+    baseline_route_exists: bool
+    baseline_hops: Optional[int] = None
+    baseline_total_weight: Optional[int] = None
+    baseline_paths_count: int = 0
+    perturbed_route_exists: bool
+    perturbed_hops: Optional[int] = None
+    perturbed_total_weight: Optional[int] = None
+    perturbed_paths_count: int = 0
+    original_path_survived: bool
+    alternative_path_found: bool
+    delta_hops: Optional[int] = None
+    endpoint_disabled: bool = False
+    disabled_endpoint_id: Optional[int] = None
+    baseline_paths: list[PathItem] = Field(default_factory=list)
+    perturbed_paths: list[PathItem] = Field(default_factory=list)
+
+
+class ReachabilityComparisonResult(BaseModel):
+    """Comparison of downstream reachability before and after interventions."""
+    source_body_id: int
+    max_hops: int
+    baseline_reachable_count: int
+    perturbed_reachable_count: int
+    delta_reachability: int  # R_baseline - R_perturbed (positive = loss of reachability)
+    retention_fraction: float  # R_perturbed / R_baseline
+    lost_node_ids: list[int] = Field(default_factory=list)
+    lost_nodes_per_hop: dict[int, int] = Field(default_factory=dict)
+    baseline_layers: list[CascadeHopLayer] = Field(default_factory=list)
+    perturbed_layers: list[CascadeHopLayer] = Field(default_factory=list)
+    baseline_cascade: Optional[DownstreamCascadeResponse] = None
+    perturbed_cascade: Optional[DownstreamCascadeResponse] = None
+
+
+class PerturbationComparisonRequest(BaseModel):
+    """Request payload for comparing baseline versus perturbed network."""
+    interventions: InterventionConfig
+    source_body_id: int
+    target_body_id: Optional[int] = None
+    max_hops: int = 3
+    max_paths: int = 3
+    strategy: str = "shortest"
+    min_weight: Optional[int] = None
+    max_cascade_nodes: int = 300
+    include_cascade_graph: bool = True
+
+
+class PerturbationComparisonResponse(BaseModel):
+    """Comprehensive comparison report between baseline and perturbed graph representations."""
+    experiment_id: str
+    timestamp: str
+    dataset: str = "male-cns:v1.0"
+    source_body_id: int
+    target_body_id: Optional[int] = None
+    interventions: InterventionConfig
+    path_comparison: Optional[PathComparisonResult] = None
+    reachability_comparison: Optional[ReachabilityComparisonResult] = None
+    summary_text: str
+    scientific_notice: str = (
+        "Structural interventions represent non-destructive exclusion of nodes/edges in a temporary computational graph representation. "
+        "They do not simulate physiological neural dynamics, spike propagation, behavioral impairment, or biological recovery."
+    )
+
+
+class MultiLevelResult(BaseModel):
+    """Results at an individual intervention level in a controlled multi-level experiment."""
+    level: int
+    disabled_neurons: list[int]
+    reachable_count: int
+    delta_reachability: int
+    retention_fraction: float
+    path_exists: Optional[bool] = None
+    path_hops: Optional[int] = None
+
+
+class ControlledExperimentRequest(BaseModel):
+    """Request for running controlled automated perturbation experiments."""
+    experiment_type: str  # 'random_nodes' | 'high_degree_nodes' | 'random_edges' | 'multi_level'
+    scope_source_id: int
+    scope_target_id: Optional[int] = None
+    max_hops: int = 3
+    removal_count: int = 1
+    degree_type: str = "total"  # 'in' | 'out' | 'total'
+    random_seed: Optional[int] = 42
+    levels: Optional[list[int]] = None
+
+
+class ControlledExperimentResponse(BaseModel):
+    """Results from a controlled reproducible perturbation experiment."""
+    experiment_id: str
+    experiment_type: str
+    random_seed: Optional[int] = None
+    selected_interventions: InterventionConfig
+    comparison: PerturbationComparisonResponse
+    multi_level_results: Optional[list[MultiLevelResult]] = None
+
 

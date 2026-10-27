@@ -1009,3 +1009,188 @@ class TestRealDataIntegration:
             assert 0 <= node.hop <= 2
 
 
+# ── V5 Perturbation Lab Unit & Integration Tests ─────────────────────────────
+
+class TestV5PerturbationLab:
+    """Unit tests for non-destructive intervention overlay, comparison, and controlled experiments."""
+
+    def _make_graph_provider(self):
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        from pathlib import Path
+
+        # Diamond graph with alternate bypass:
+        # 1 -> 2 (w=10), 1 -> 3 (w=5)
+        # 2 -> 4 (w=20)
+        # 3 -> 4 (w=15)
+        # 4 -> 5 (w=30)
+        # 5 -> 1 (w=2 reverse cycle)
+        annotations = pd.DataFrame({
+            "bodyId": [1, 2, 3, 4, 5],
+            "type": ["Type1", "Type2", "Type3", "Type4", "Type5"],
+            "instance": ["inst1", "inst2", "inst3", "inst4", "inst5"],
+            "superclass": ["super1", "super2", "super3", "super4", "super5"],
+            "status": ["Traced"] * 5,
+            "statusLabel": ["Traced"] * 5,
+            "somaSide": ["L"] * 5,
+            "somaNeuromere": [None] * 5,
+            "subclass": [None] * 5,
+            "hemibrainType": [None] * 5,
+        }).set_index("bodyId", drop=False)
+
+        weights = pd.DataFrame({
+            "body_pre": [1, 1, 2, 3, 4, 5],
+            "body_post": [2, 3, 4, 4, 5, 1],
+            "weight": [10, 5, 20, 15, 30, 2],
+            "type_pre": ["Type1", "Type1", "Type2", "Type3", "Type4", "Type5"],
+            "type_post": ["Type2", "Type3", "Type4", "Type4", "Type5", "Type1"],
+        })
+
+        p = LocalFeatherProvider(Path("/dummy"))
+        p._loaded = True
+        p._annotations = annotations
+        p._weights = weights
+        p._neurotransmitters = pd.DataFrame()
+        p._body_stats = pd.DataFrame()
+        p._ensure_graph_indexed()
+        return p
+
+    def test_immutability_of_source_data(self):
+        p = self._make_graph_provider()
+        orig_weights_len = len(p._weights)
+        orig_post_arr = p._post_arr.copy()
+        orig_wt_arr = p._wt_arr.copy()
+
+        # Perform path search with neuron 2 and edge (1, 3) disabled
+        res = p.find_paths(
+            source_body_id=1,
+            target_body_id=4,
+            disabled_neurons={2},
+            disabled_edges={(1, 3)},
+        )
+        assert res.returned_count == 0  # Both routes blocked
+
+        # Ensure underlying arrays are strictly unchanged
+        assert len(p._weights) == orig_weights_len
+        assert (p._post_arr == orig_post_arr).all()
+        assert (p._wt_arr == orig_wt_arr).all()
+
+    def test_disable_intermediate_neuron_finds_alternative_route(self):
+        p = self._make_graph_provider()
+        # Baseline shortest path 1 -> 4 can go through 2 or 3
+        base = p.find_paths(source_body_id=1, target_body_id=4, max_paths=2)
+        assert base.returned_count == 2
+
+        # Disable neuron 2 -> only path through neuron 3 should remain
+        pert = p.find_paths(source_body_id=1, target_body_id=4, max_paths=2, disabled_neurons={2})
+        assert pert.returned_count == 1
+        nodes = [n.body_id for n in pert.paths[0].nodes]
+        assert nodes == [1, 3, 4]
+        assert 2 not in nodes
+
+    def test_disable_edge_preserves_reverse_edge(self):
+        p = self._make_graph_provider()
+        # 1 -> 2 is an edge, 5 -> 1 is an edge
+        # Disabling 1 -> 2 should not affect 5 -> 1 or 3 -> 4
+        pert = p.find_paths(source_body_id=1, target_body_id=4, disabled_edges={(1, 2)})
+        assert pert.returned_count == 1
+        nodes = [n.body_id for n in pert.paths[0].nodes]
+        assert nodes == [1, 3, 4]
+
+        # 5 -> 1 edge remains traversable
+        cycle_res = p.find_paths(source_body_id=4, target_body_id=1, disabled_edges={(1, 2)})
+        assert cycle_res.returned_count == 1
+        assert [n.body_id for n in cycle_res.paths[0].nodes] == [4, 5, 1]
+
+    def test_disable_endpoints_handled_gracefully(self):
+        p = self._make_graph_provider()
+        res_src = p.find_paths(source_body_id=1, target_body_id=4, disabled_neurons={1})
+        assert res_src.status == "endpoint_disabled"
+        assert res_src.returned_count == 0
+
+        res_dst = p.find_paths(source_body_id=1, target_body_id=4, disabled_neurons={4})
+        assert res_dst.status == "endpoint_disabled"
+        assert res_dst.returned_count == 0
+
+    def test_downstream_cascade_reachability_reduction(self):
+        p = self._make_graph_provider()
+        base_c = p.compute_downstream_cascade(source_body_id=1, max_hops=3)
+        assert base_c.total_unique_nodes == 5  # 1, 2, 3, 4, 5 all reachable
+
+        # Disabling neuron 4 disconnects 5 (and the cycle back to 1)
+        pert_c = p.compute_downstream_cascade(source_body_id=1, max_hops=3, disabled_neurons={4})
+        pert_nodes = {n.body_id for n in pert_c.nodes}
+        assert pert_nodes == {1, 2, 3}
+        assert 4 not in pert_nodes
+        assert 5 not in pert_nodes
+
+    def test_perturbation_service_comparison(self):
+        from backend.perturbation_service import PerturbationService
+        from backend.models import InterventionConfig, DisabledEdge, PerturbationComparisonRequest
+
+        p = self._make_graph_provider()
+        svc = PerturbationService(p)
+
+        req = PerturbationComparisonRequest(
+            interventions=InterventionConfig(
+                disabled_neurons=[2],
+                disabled_edges=[DisabledEdge(body_pre=1, body_post=3)],
+            ),
+            source_body_id=1,
+            target_body_id=4,
+            max_hops=3,
+        )
+        comp = svc.compare_perturbation(req)
+        assert comp.path_comparison is not None
+        assert comp.path_comparison.baseline_route_exists is True
+        assert comp.path_comparison.perturbed_route_exists is False
+        assert comp.reachability_comparison is not None
+        assert comp.reachability_comparison.delta_reachability > 0
+
+    def test_controlled_experiments_random_and_reproducible(self):
+        from backend.perturbation_service import PerturbationService
+        from backend.models import ControlledExperimentRequest
+
+        p = self._make_graph_provider()
+        svc = PerturbationService(p)
+
+        req1 = ControlledExperimentRequest(
+            experiment_type="random_nodes",
+            scope_source_id=1,
+            scope_target_id=4,
+            removal_count=1,
+            random_seed=123,
+        )
+        res1 = svc.run_controlled_experiment(req1)
+
+        req2 = ControlledExperimentRequest(
+            experiment_type="random_nodes",
+            scope_source_id=1,
+            scope_target_id=4,
+            removal_count=1,
+            random_seed=123,
+        )
+        res2 = svc.run_controlled_experiment(req2)
+        assert res1.selected_interventions.disabled_neurons == res2.selected_interventions.disabled_neurons
+
+    def test_controlled_experiments_high_degree(self):
+        from backend.perturbation_service import PerturbationService
+        from backend.models import ControlledExperimentRequest
+
+        p = self._make_graph_provider()
+        svc = PerturbationService(p)
+
+        # In diamond graph: node 4 has in_degree 2, out_degree 1 (total=3)
+        # Node 2 has in=1, out=1 (total=2). Node 3 has in=1, out=1 (total=2)
+        # Highest degree node among eligible (excluding source 1 and target 5) should be 4
+        req = ControlledExperimentRequest(
+            experiment_type="high_degree_nodes",
+            scope_source_id=1,
+            scope_target_id=5,
+            removal_count=1,
+            degree_type="total",
+        )
+        res = svc.run_controlled_experiment(req)
+        assert res.selected_interventions.disabled_neurons == [4]
+
+

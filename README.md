@@ -279,14 +279,59 @@ npm run build --prefix frontend
 
 ---
 
-## Roadmap
-
 - V0 ✅ Foundation & Data Audit
 - V1 ✅ Connectome Explorer
 - V2 ✅ Enhanced Neuron Inspector & Connectivity Intelligence
 - V3 ✅ Neural Pathway Tracer & Downstream Cascade Analysis
 - V4 ✅ Neural Debugger (interactive structural path tracing, breakpoints & execution history)
-- V5 — Perturbation Lab (in-silico ablations, circuit rewiring)
+- V5 ✅ Perturbation Lab (simulated neural damage, connectivity analysis & network resilience)
+
+---
+
+## Version 5 Features — Perturbation Lab
+
+The **Perturbation Lab** provides a controlled, in-silico environment for researchers to simulate neural lesions and structural disconnections on temporary graph representations of the Janelia MaleCNS v1.0 connectome without modifying the original source data.
+
+### 1. Non-Destructive Computational Graph Overlay
+- Interventions operate as temporary exclusions during BFS/Dijkstra traversals and downstream cascades.
+- **Strict Data Immutability**: Underlying Arrow/Feather files, pandas DataFrames, and NumPy contiguous adjacency indexes (`_pre_index`) remain 100% read-only and immutable.
+- Resetting or undoing interventions instantaneously restores the baseline network view without reloading dataset files.
+
+### 2. Targeted In-Silico Lesions
+- **Disable Neuron**: Temporarily excludes a specific neuron by body ID along with all its incoming and outgoing incident connections.
+- **Disable Directed Connection**: Excludes an individual recorded directed edge ($u \to v$) without disabling the reverse connection ($v \to u$, if present) or other connections incident to $u$ and $v$.
+- **Endpoint Handling**: If a selected source or target neuron itself is disabled, the perturbation analysis detects endpoint unavailability rather than inventing replacement routes.
+
+### 3. Quantitative Before-and-After Comparative Analysis
+- **Reachability Retention ($\Delta R$)**: Measures the reduction in downstream reachable neurons within a declared hop radius ($\Delta R = R_{\text{baseline}} - R_{\text{perturbed}}$).
+- **Per-Hop Retention Breakdown**: Layer-by-layer audit of newly reached nodes, cumulative reachable population, and retention percentages.
+- **Pathway Survival & Detour Penalty ($\Delta H$)**: Determines whether the original shortest route survives, or detects alternative structural detours with exact hop detour penalties ($\Delta H = H_{\text{perturbed}} - H_{\text{baseline}}$).
+- **Disconnected Node Identification**: Generates a verified list of neurons that were reachable in the baseline network but lost after the intervention.
+
+### 4. Controlled Resilience Experiments
+- **Reproducible Random Lesions**: Samples eligible neurons within the declared graph scope using a recorded pseudo-random seed. The exact intervention can be reproduced across sessions.
+- **High-Degree Bottleneck Removal**: Identifies and removes the most connected hubs (by total degree, out-degree, or in-degree) to measure network vulnerability.
+- **Multi-Level Progressive Lesion Curves**: Evaluates resilience at multiple exclusion levels (e.g., 1, 2, 5, 10 neurons removed) to map structural reachability degradation.
+
+### 5. Interactive Cytoscape Visualizer
+- Color-coded node and edge encoding:
+  - Source neuron (emerald green)
+  - Target neuron (violet)
+  - Intact network neurons (cyan)
+  - Disabled neurons (rose with red border)
+  - Lost reachable neurons (amber yellow)
+  - Surviving alternative route edges (emerald green line)
+  - Excluded/severed connections (dashed rose line)
+
+### 6. Reproducibility & JSON Export
+- Exports complete, versioned JSON records containing:
+  - Unique experiment ID and UTC timestamp
+  - Dataset identity and provenance (`male-cns:v1.0`)
+  - Configured analysis scope, limits, and random seed
+  - Applied intervention overlay configuration
+  - Baseline vs. perturbed quantitative metrics
+  - Complete list of lost node IDs
+  - Mandatory scientific qualifications and caveats
 
 ---
 

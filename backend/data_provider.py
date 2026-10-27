@@ -708,10 +708,13 @@ class LocalFeatherProvider:
         max_paths: int = 3,
         strategy: str = "shortest",
         min_weight: Optional[int] = None,
+        disabled_neurons: Optional[set[int]] = None,
+        disabled_edges: Optional[set[tuple[int, int]]] = None,
     ) -> PathwaySearchResponse:
         """
         Find up to max_paths directed simple paths from source_body_id to target_body_id.
         Preserves edge direction: pre -> post.
+        Optionally accepts non-destructive intervention overlays (disabled_neurons, disabled_edges).
         """
         self._ensure_graph_indexed()
         max_hops = max(1, min(max_hops, 10))
@@ -719,6 +722,9 @@ class LocalFeatherProvider:
         valid_strategies = ("shortest", "weight_prioritized")
         if strategy not in valid_strategies:
             raise ValueError(f"Invalid strategy '{strategy}'. Must be one of {valid_strategies}.")
+
+        dis_n: set[int] = set(disabled_neurons) if disabled_neurons else set()
+        dis_e: set[tuple[int, int]] = set(disabled_edges) if disabled_edges else set()
 
         # Check endpoints exist in dataset if loaded
         if self._loaded and not self._annotations.empty:
@@ -728,6 +734,24 @@ class LocalFeatherProvider:
                 raise KeyError(f"Source neuron bodyId {source_body_id} not found in MaleCNS dataset.")
             if not has_target:
                 raise KeyError(f"Target neuron bodyId {target_body_id} not found in MaleCNS dataset.")
+
+        # Intervention check: If source or target is explicitly disabled
+        if source_body_id in dis_n or target_body_id in dis_n:
+            return PathwaySearchResponse(
+                source_body_id=source_body_id,
+                target_body_id=target_body_id,
+                strategy=strategy,
+                max_hops=max_hops,
+                max_paths=max_paths,
+                paths=[],
+                returned_count=0,
+                status="endpoint_disabled",
+                is_partial=False,
+                explored_nodes=0,
+                explored_edges=0,
+                dataset=DATASET_NAME,
+                source_file=_WEIGHTS_FILE,
+            )
 
         # Edge case: Source equals target (valid 0-hop path)
         if source_body_id == target_body_id:
@@ -779,7 +803,7 @@ class LocalFeatherProvider:
         if strategy == "shortest":
             def bfs(src: int, dst: int, max_h: int, excl_edges: set[tuple[int, int]], excl_nodes: set[int]):
                 queue = deque([(src, [src], 0)])
-                visited = set(excl_nodes)
+                visited = set(excl_nodes) | dis_n
                 visited.add(src)
                 while queue:
                     curr, path, h = queue.popleft()
@@ -793,7 +817,7 @@ class LocalFeatherProvider:
                         p, w = int(p), int(w)
                         if min_weight is not None and w < min_weight:
                             continue
-                        if (curr, p) in excl_edges or p in visited:
+                        if (curr, p) in excl_edges or (curr, p) in dis_e or p in visited:
                             continue
                         candidates.append((p, w))
                     # Sort candidates deterministically: descending weight, ascending body ID
@@ -867,7 +891,7 @@ class LocalFeatherProvider:
                         p, w = int(p), float(w)
                         if min_weight is not None and w < min_weight:
                             continue
-                        if p in excl_nodes or (curr, p) in excl_edges:
+                        if p in excl_nodes or p in dis_n or (curr, p) in excl_edges or (curr, p) in dis_e:
                             continue
                         candidates.append((p, w))
                     candidates.sort(key=lambda x: (-x[1], x[0]))
@@ -994,21 +1018,45 @@ class LocalFeatherProvider:
         max_nodes: int = 300,
         max_edges: int = 600,
         min_weight: Optional[int] = None,
+        disabled_neurons: Optional[set[int]] = None,
+        disabled_edges: Optional[set[tuple[int, int]]] = None,
     ) -> DownstreamCascadeResponse:
         """
         Compute downstream structural reachability cascade from source_body_id.
         Traverses outgoing directed edges with visited set to prevent infinite loops.
         Assigns each discovered node its minimum discovered hop distance.
+        Optionally applies non-destructive intervention exclusions.
         """
         self._ensure_graph_indexed()
         max_hops = max(1, min(max_hops, 6))
         max_nodes = max(1, min(max_nodes, 1000))
         max_edges = max(1, min(max_edges, 2000))
 
+        dis_n: set[int] = set(disabled_neurons) if disabled_neurons else set()
+        dis_e: set[tuple[int, int]] = set(disabled_edges) if disabled_edges else set()
+
         if self._loaded and not self._annotations.empty:
             has_source = (source_body_id in self._annotations.index) or (source_body_id in self._pre_index)
             if not has_source:
                 raise KeyError(f"Source neuron bodyId {source_body_id} not found in MaleCNS dataset.")
+
+        if source_body_id in dis_n:
+            return DownstreamCascadeResponse(
+                source_body_id=source_body_id,
+                max_hops=max_hops,
+                max_nodes=max_nodes,
+                max_edges=max_edges,
+                min_weight=min_weight,
+                total_unique_nodes=0,
+                total_edges=0,
+                layers=[],
+                nodes=[],
+                edges=[],
+                is_truncated=True,
+                truncation_reason="source_neuron_disabled",
+                dataset=DATASET_NAME,
+                source_file=_WEIGHTS_FILE,
+            )
 
         queue = deque([(source_body_id, 0)])
         node_hops: dict[int, int] = {source_body_id: 0}
@@ -1028,6 +1076,8 @@ class LocalFeatherProvider:
             for p, w in zip(posts, wts):
                 p, w = int(p), int(w)
                 if min_weight is not None and w < min_weight:
+                    continue
+                if p in dis_n or (curr, p) in dis_e:
                     continue
 
                 if (curr, p) not in edge_set:
@@ -1129,4 +1179,50 @@ class LocalFeatherProvider:
             dataset=DATASET_NAME,
             source_file=_WEIGHTS_FILE,
         )
+
+    # ── V5: Perturbation Lab Helpers ──────────────────────────────────────────
+
+    def validate_interventions(
+        self,
+        disabled_neurons: list[int],
+        disabled_edges: list[tuple[int, int]],
+    ) -> dict:
+        """
+        Validate whether proposed disabled neurons and edges genuinely exist in the dataset.
+        Computes how many incident edges are affected by disabled neurons.
+        """
+        self._ensure_graph_indexed()
+        verified_neurons = []
+        unverified_neurons = []
+        for bid in disabled_neurons:
+            if (not self._annotations.empty and bid in self._annotations.index) or (bid in self._pre_index):
+                verified_neurons.append(bid)
+            else:
+                unverified_neurons.append(bid)
+
+        verified_edges = []
+        unverified_edges = []
+        for u, v in disabled_edges:
+            w, _, _ = self._get_edge_record(u, v)
+            if w > 0:
+                verified_edges.append((u, v, w))
+            else:
+                unverified_edges.append((u, v, 0))
+
+        # Count incident outgoing edges to disabled neurons
+        incident_edges_count = 0
+        for bid in verified_neurons:
+            if bid in self._pre_index:
+                s, e = self._pre_index[bid]
+                incident_edges_count += (e - s)
+
+        return {
+            "valid": len(unverified_neurons) == 0 and len(unverified_edges) == 0,
+            "verified_neurons": verified_neurons,
+            "unverified_neurons": unverified_neurons,
+            "verified_edges": verified_edges,
+            "unverified_edges": unverified_edges,
+            "incident_edges_disabled_count": incident_edges_count,
+        }
+
 

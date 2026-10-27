@@ -354,3 +354,127 @@ export interface ExportedTraceData {
   scientificQualifications: string[];
 }
 
+// ── V5: Perturbation Lab Types ───────────────────────────────────────────────
+
+export interface DisabledNeuron {
+  body_id: number;
+  label?: string | null;
+  reason?: string | null;
+}
+
+export interface DisabledEdge {
+  body_pre: number;
+  body_post: number;
+  weight?: number | null;
+  label?: string | null;
+}
+
+export interface InterventionConfig {
+  disabled_neurons: number[];
+  disabled_edges: DisabledEdge[];
+  analysis_scope?: string;
+  experiment_name?: string | null;
+  random_seed?: number | null;
+}
+
+export interface PerturbationValidationResponse {
+  valid: boolean;
+  verified_neurons: number[];
+  unverified_neurons: number[];
+  verified_edges: DisabledEdge[];
+  unverified_edges: DisabledEdge[];
+  incident_edges_disabled_count: number;
+  message: string;
+}
+
+export interface PathComparisonResult {
+  source_body_id: number;
+  target_body_id: number;
+  strategy: string;
+  baseline_route_exists: boolean;
+  baseline_hops: number | null;
+  baseline_total_weight: number | null;
+  baseline_paths_count: number;
+  perturbed_route_exists: boolean;
+  perturbed_hops: number | null;
+  perturbed_total_weight: number | null;
+  perturbed_paths_count: number;
+  original_path_survived: boolean;
+  alternative_path_found: boolean;
+  delta_hops: number | null;
+  endpoint_disabled: boolean;
+  disabled_endpoint_id: number | null;
+  baseline_paths: PathItem[];
+  perturbed_paths: PathItem[];
+}
+
+export interface ReachabilityComparisonResult {
+  source_body_id: number;
+  max_hops: number;
+  baseline_reachable_count: number;
+  perturbed_reachable_count: number;
+  delta_reachability: number;
+  retention_fraction: number;
+  lost_node_ids: number[];
+  lost_nodes_per_hop: Record<number, number>;
+  baseline_layers: CascadeHopLayer[];
+  perturbed_layers: CascadeHopLayer[];
+  baseline_cascade: DownstreamCascadeResponse | null;
+  perturbed_cascade: DownstreamCascadeResponse | null;
+}
+
+export interface PerturbationComparisonRequest {
+  interventions: InterventionConfig;
+  source_body_id: number;
+  target_body_id?: number | null;
+  max_hops?: number;
+  max_paths?: number;
+  strategy?: string;
+  min_weight?: number | null;
+  max_cascade_nodes?: number;
+  include_cascade_graph?: boolean;
+}
+
+export interface PerturbationComparisonResponse {
+  experiment_id: string;
+  timestamp: string;
+  dataset: string;
+  source_body_id: number;
+  target_body_id?: number | null;
+  interventions: InterventionConfig;
+  path_comparison: PathComparisonResult | null;
+  reachability_comparison: ReachabilityComparisonResult | null;
+  summary_text: string;
+  scientific_notice: string;
+}
+
+export interface MultiLevelResult {
+  level: number;
+  disabled_neurons: number[];
+  reachable_count: number;
+  delta_reachability: number;
+  retention_fraction: number;
+  path_exists: boolean | null;
+  path_hops: number | null;
+}
+
+export interface ControlledExperimentRequest {
+  experiment_type: 'random_nodes' | 'high_degree_nodes' | 'random_edges' | 'multi_level';
+  scope_source_id: number;
+  scope_target_id?: number | null;
+  max_hops?: number;
+  removal_count?: number;
+  degree_type?: 'in' | 'out' | 'total';
+  random_seed?: number | null;
+  levels?: number[] | null;
+}
+
+export interface ControlledExperimentResponse {
+  experiment_id: string;
+  experiment_type: string;
+  random_seed: number | null;
+  selected_interventions: InterventionConfig;
+  comparison: PerturbationComparisonResponse;
+  multi_level_results?: MultiLevelResult[] | null;
+}
+

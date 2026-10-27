@@ -19,14 +19,21 @@ from backend.data_provider import LocalFeatherProvider
 from backend.models import (
     ConnectionListResponse,
     ConnectivitySummaryResponse,
+    ControlledExperimentRequest,
+    ControlledExperimentResponse,
     DownstreamCascadeResponse,
     ErrorDetail,
     GraphResponse,
     HealthResponse,
+    InterventionConfig,
     Neuron,
     NeuronSearchResponse,
     PathwaySearchResponse,
+    PerturbationComparisonRequest,
+    PerturbationComparisonResponse,
+    PerturbationValidationResponse,
 )
+from backend.perturbation_service import PerturbationService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -34,12 +41,13 @@ logger = logging.getLogger(__name__)
 # ── Singletons ────────────────────────────────────────────────────────────────
 _provider: Optional[LocalFeatherProvider] = None
 _service: Optional[ConnectomeService] = None
+_perturbation_service: Optional[PerturbationService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service
+    global _provider, _service, _perturbation_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -52,6 +60,7 @@ async def lifespan(app: FastAPI):
         # Allow the process to start but mark as degraded; health endpoint
         # will report the error clearly.
     _service = ConnectomeService(_provider, settings)
+    _perturbation_service = PerturbationService(_provider)
     logger.info("BrainDebugger ready.")
     yield
     logger.info("BrainDebugger shutting down.")
@@ -94,6 +103,21 @@ def get_service() -> ConnectomeService:
 
 
 ServiceDep = Annotated[ConnectomeService, Depends(get_service)]
+
+
+def get_perturbation_service() -> PerturbationService:
+    if _perturbation_service is None or not _provider.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "Data files are not loaded or perturbation service is not ready.",
+            },
+        )
+    return _perturbation_service
+
+
+PerturbationDep = Annotated[PerturbationService, Depends(get_perturbation_service)]
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -423,4 +447,74 @@ async def compute_downstream_cascade(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail={"error": "cascade_failed", "message": str(exc)})
+
+
+# ── V5: Perturbation Lab Endpoints ──────────────────────────────────────────
+
+@app.post(
+    "/api/perturbations/validate",
+    response_model=PerturbationValidationResponse,
+    summary="Validate proposed neuron and edge interventions",
+    tags=["Perturbation Lab"],
+)
+async def validate_perturbations(
+    config: InterventionConfig,
+    pert_svc: PerturbationDep,
+) -> PerturbationValidationResponse:
+    """Validate that specified neurons and edges exist in the MaleCNS dataset."""
+    try:
+        return pert_svc.validate_interventions(config)
+    except Exception as exc:
+        logger.error("Intervention validation failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail={"error": "validation_failed", "message": str(exc)})
+
+
+@app.post(
+    "/api/perturbations/compare",
+    response_model=PerturbationComparisonResponse,
+    summary="Compare baseline connectome against perturbed network",
+    tags=["Perturbation Lab"],
+)
+async def compare_perturbations(
+    req: PerturbationComparisonRequest,
+    pert_svc: PerturbationDep,
+) -> PerturbationComparisonResponse:
+    """
+    Calculate and compare baseline vs perturbed structural connectivity,
+    shortest routes, and downstream cascade reachability.
+    """
+    try:
+        return pert_svc.compare_perturbation(req)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"error": "not_found", "message": str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_parameters", "message": str(exc)})
+    except Exception as exc:
+        logger.error("Perturbation comparison failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail={"error": "comparison_failed", "message": str(exc)})
+
+
+@app.post(
+    "/api/perturbations/experiments",
+    response_model=ControlledExperimentResponse,
+    summary="Run controlled perturbation experiment (random, high-degree, multi-level)",
+    tags=["Perturbation Lab"],
+)
+async def run_controlled_experiment(
+    req: ControlledExperimentRequest,
+    pert_svc: PerturbationDep,
+) -> ControlledExperimentResponse:
+    """
+    Run reproducible automated perturbation experiments (e.g., random neuron removal,
+    high-degree bottleneck removal, or progressive multi-level lesion cascades).
+    """
+    try:
+        return pert_svc.run_controlled_experiment(req)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"error": "not_found", "message": str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_parameters", "message": str(exc)})
+    except Exception as exc:
+        logger.error("Controlled experiment failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail={"error": "experiment_failed", "message": str(exc)})
 

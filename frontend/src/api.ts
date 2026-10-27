@@ -9,12 +9,18 @@
 import type {
   ConnectionListResponse,
   ConnectivitySummaryResponse,
+  ControlledExperimentRequest,
+  ControlledExperimentResponse,
   DownstreamCascadeResponse,
   GraphResponse,
   HealthResponse,
+  InterventionConfig,
   Neuron,
   NeuronSearchResponse,
   PathwaySearchResponse,
+  PerturbationComparisonRequest,
+  PerturbationComparisonResponse,
+  PerturbationValidationResponse,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -46,6 +52,32 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
           detail = body.message;
         } else if (typeof body.detail === 'object') {
           detail = JSON.stringify(body.detail);
+        }
+      }
+    } catch { /* ignore */ }
+    throw new ApiClientError(res.status, detail);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      if (errBody) {
+        if (typeof errBody.detail === 'string') {
+          detail = errBody.detail;
+        } else if (errBody.detail?.message) {
+          detail = errBody.detail.message;
+        } else if (errBody.message) {
+          detail = errBody.message;
         }
       }
     } catch { /* ignore */ }
@@ -149,5 +181,17 @@ export const api = {
     if (params.maxEdges !== undefined) p.set('max_edges', String(params.maxEdges));
     if (params.minWeight !== undefined) p.set('min_weight', String(params.minWeight));
     return get<DownstreamCascadeResponse>(`/api/neurons/${params.bodyId}/downstream-cascade?${p}`, signal);
+  },
+
+  validateInterventions(config: InterventionConfig, signal?: AbortSignal): Promise<PerturbationValidationResponse> {
+    return post<PerturbationValidationResponse>('/api/perturbations/validate', config, signal);
+  },
+
+  comparePerturbations(req: PerturbationComparisonRequest, signal?: AbortSignal): Promise<PerturbationComparisonResponse> {
+    return post<PerturbationComparisonResponse>('/api/perturbations/compare', req, signal);
+  },
+
+  runControlledExperiment(req: ControlledExperimentRequest, signal?: AbortSignal): Promise<ControlledExperimentResponse> {
+    return post<ControlledExperimentResponse>('/api/perturbations/experiments', req, signal);
   },
 };
