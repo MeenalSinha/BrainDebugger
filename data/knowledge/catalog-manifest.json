@@ -1,0 +1,15 @@
+{
+  "catalog_id": "neuroquery-drosophila-cns-catalog",
+  "catalog_name": "NeuroQuery Biological Knowledge Catalog — Janelia MaleCNS Edition",
+  "version": "1.0.0",
+  "description": "Versioned, evidence-grounded biological knowledge layer linking neuroscience concepts to verified MaleCNS v1.0 annotations, peer-reviewed literature, and supported graph investigations.",
+  "dataset_version": "male-cns:v1.0",
+  "created_at": "2026-10-27T12:00:00Z",
+  "last_updated": "2026-10-27T12:00:00Z",
+  "schema_version": "1.0",
+  "maintainer": "BrainDebugger Scientific Knowledge Working Group",
+  "total_concepts": 6,
+  "total_sources": 6,
+  "total_mappings": 7,
+  "total_investigations": 5
+}

@@ -32,8 +32,17 @@ from backend.models import (
     PerturbationComparisonRequest,
     PerturbationComparisonResponse,
     PerturbationValidationResponse,
+    BiologicalConcept,
+    EvidenceSource,
+    ConceptMapping,
+    SupportedInvestigation,
+    KnowledgeStatusResponse,
+    ConceptCandidateNeuron,
+    ConceptDetailResponse,
+    KnowledgeValidationReport,
 )
 from backend.perturbation_service import PerturbationService
+from backend.knowledge_service import KnowledgeService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -42,12 +51,13 @@ logger = logging.getLogger(__name__)
 _provider: Optional[LocalFeatherProvider] = None
 _service: Optional[ConnectomeService] = None
 _perturbation_service: Optional[PerturbationService] = None
+_knowledge_service: Optional[KnowledgeService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service, _perturbation_service
+    global _provider, _service, _perturbation_service, _knowledge_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -61,6 +71,7 @@ async def lifespan(app: FastAPI):
         # will report the error clearly.
     _service = ConnectomeService(_provider, settings)
     _perturbation_service = PerturbationService(_provider)
+    _knowledge_service = KnowledgeService(_provider)
     logger.info("BrainDebugger ready.")
     yield
     logger.info("BrainDebugger shutting down.")
@@ -118,6 +129,21 @@ def get_perturbation_service() -> PerturbationService:
 
 
 PerturbationDep = Annotated[PerturbationService, Depends(get_perturbation_service)]
+
+
+def get_knowledge_service() -> KnowledgeService:
+    if _knowledge_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "Knowledge catalog is not loaded or knowledge service is not ready.",
+            },
+        )
+    return _knowledge_service
+
+
+KnowledgeDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -517,4 +543,124 @@ async def run_controlled_experiment(
     except Exception as exc:
         logger.error("Controlled experiment failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "experiment_failed", "message": str(exc)})
+
+
+# ── V6: NeuroQuery Biological Knowledge Layer Routes ─────────────────────────
+
+@app.get(
+    "/api/knowledge/status",
+    response_model=KnowledgeStatusResponse,
+    summary="NeuroQuery knowledge catalog health and metadata",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def get_knowledge_status(
+    knowledge_svc: KnowledgeDep,
+) -> KnowledgeStatusResponse:
+    """Returns metadata, versions, and validation status of the biological knowledge catalog."""
+    return knowledge_svc.get_status()
+
+
+@app.get(
+    "/api/knowledge/concepts",
+    response_model=list[BiologicalConcept],
+    summary="List biological concepts in the NeuroQuery catalog",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def list_concepts(
+    domain: Optional[str] = Query(None, description="Filter by biological domain (e.g. visual_processing, motor_control)"),
+    evidence_status: Optional[str] = Query(None, description="Filter by evidence status (verified, partially_supported, unsupported, requires_review)"),
+    q: Optional[str] = Query(None, description="Case-insensitive search over concept names and descriptions"),
+    knowledge_svc: KnowledgeDep = None,
+) -> list[BiologicalConcept]:
+    """Retrieve cataloged biological concepts with optional domain, status, or keyword filtering."""
+    return knowledge_svc.list_concepts(domain=domain, evidence_status=evidence_status, query=q)
+
+
+@app.get(
+    "/api/knowledge/concepts/{concept_id}",
+    response_model=ConceptDetailResponse,
+    summary="Get full biological concept details and linked evidence",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def get_concept_detail(
+    concept_id: str,
+    knowledge_svc: KnowledgeDep,
+) -> ConceptDetailResponse:
+    """Retrieve complete concept metadata including linked peer-reviewed papers, mappings, and capabilities."""
+    detail = knowledge_svc.get_concept(concept_id)
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "concept_not_found", "message": f"Biological concept '{concept_id}' not found in catalog."},
+        )
+    return detail
+
+
+@app.get(
+    "/api/knowledge/concepts/{concept_id}/candidates",
+    response_model=list[ConceptCandidateNeuron],
+    summary="Retrieve candidate MaleCNS neurons matching concept mappings",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def get_concept_candidates(
+    concept_id: str,
+    limit: int = Query(50, ge=1, le=500, description="Max candidate neurons to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    knowledge_svc: KnowledgeDep = None,
+) -> list[ConceptCandidateNeuron]:
+    """Retrieve real neurons from the MaleCNS dataset matching verified concept mappings."""
+    concept = knowledge_svc._concepts.get(concept_id)
+    if not concept:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "concept_not_found", "message": f"Biological concept '{concept_id}' not found."},
+        )
+    return knowledge_svc.get_candidate_neurons(concept_id, limit=limit, offset=offset)
+
+
+@app.get(
+    "/api/knowledge/investigations",
+    response_model=list[SupportedInvestigation],
+    summary="List supported graph investigation pipelines",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def list_supported_investigations(
+    knowledge_svc: KnowledgeDep,
+) -> list[SupportedInvestigation]:
+    """List all connectome graph investigations supported by BrainDebugger."""
+    return knowledge_svc.list_investigations()
+
+
+@app.get(
+    "/api/knowledge/sources/{source_id}",
+    response_model=EvidenceSource,
+    summary="Get details of a peer-reviewed evidence source",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def get_evidence_source(
+    source_id: str,
+    knowledge_svc: KnowledgeDep,
+) -> EvidenceSource:
+    """Retrieve a registered scientific paper, dataset documentation, or curated source by ID."""
+    source = knowledge_svc.get_evidence_source(source_id)
+    if source is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "source_not_found", "message": f"Evidence source '{source_id}' not found."},
+        )
+    return source
+
+
+@app.get(
+    "/api/knowledge/audit",
+    response_model=KnowledgeValidationReport,
+    summary="Run automated knowledge catalog validation and compatibility audit",
+    tags=["NeuroQuery Knowledge Layer"],
+)
+async def audit_knowledge_catalog(
+    knowledge_svc: KnowledgeDep,
+) -> KnowledgeValidationReport:
+    """Performs an automated audit of the knowledge catalog: reference integrity and dataset compatibility."""
+    return knowledge_svc.validate_catalog()
+
 

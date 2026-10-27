@@ -315,8 +315,60 @@ def main() -> None:
     print(f"     Multi-level resilience assessed: {ml_summary}")
     print()
 
+    # ── 18. V6 Knowledge Status & Metadata ────────────────────────
+    print("18. V6 Knowledge Status & Metadata")
+    k_status = get("/api/knowledge/status")
+    check("catalog_version matches 1.0.0", k_status["catalog_version"] == "1.0.0")
+    check("dataset_version matches male-cns:v1.0", k_status["dataset_version"] == "male-cns:v1.0")
+    check("catalog_loaded is True", k_status["catalog_loaded"] is True)
+    check("total_concepts >= 7", k_status["total_concepts"] >= 7, k_status["total_concepts"])
+    check("supported_investigation_count >= 5", k_status["supported_investigation_count"] >= 5, k_status["supported_investigation_count"])
+    print(f"     Status: catalog={k_status['catalog_version']}, concepts={k_status['total_concepts']}, "
+          f"investigations={k_status['supported_investigation_count']}")
+    print()
+
+    # ── 19. V6 Concepts, Details & Evidence Sources ────────────────
+    print("19. V6 Concepts, Details & Evidence Sources")
+    concepts_res = get("/api/knowledge/concepts?domain=motor_control")
+    check("motor_control concepts found >= 1", len(concepts_res) >= 1)
+    
+    gf_concept = get("/api/knowledge/concepts/giant_fiber_escape_circuit")
+    check("gf_concept id matches", gf_concept["concept"]["concept_id"] == "giant_fiber_escape_circuit")
+    check("gf_concept evidence_status == verified", gf_concept["concept"]["evidence_status"] == "verified")
+    check("gf_concept mappings >= 1", len(gf_concept["mappings"]) >= 1)
+    check("gf_concept sources >= 1", len(gf_concept["sources"]) >= 1)
+    src_doi = gf_concept["sources"][0]["doi"]
+    check("source has authentic DOI", src_doi is not None and "10." in src_doi, src_doi)
+
+    src_res = get(f"/api/knowledge/sources/{gf_concept['sources'][0]['source_id']}")
+    check("src_res source_id matches", src_res["source_id"] == gf_concept["sources"][0]["source_id"])
+    print(f"     Verified concept: {gf_concept['concept']['display_name']} with {len(gf_concept['mappings'])} mappings and DOI {src_doi}")
+    print()
+
+    # ── 20. V6 Candidate Neurons, Investigations & Audit ───────────
+    print("20. V6 Candidate Neurons, Investigations & Audit")
+    cand_res = get("/api/knowledge/concepts/giant_fiber_escape_circuit/candidates?limit=10")
+    check("candidate neurons returned >= 4", len(cand_res) >= 4, len(cand_res))
+    c0 = cand_res[0]
+    check("c0 has valid body_id", c0["body_id"] in [10001, 10010, 800146, 804642])
+    check("c0 has verified matched_mapping_id", c0["matched_mapping_id"] == "map-escape-dnp01-ttmn")
+    check("c0 matched_field == type", c0["matched_field"] == "type")
+    
+    inv_res = get("/api/knowledge/investigations")
+    check("investigations returned >= 5", len(inv_res) >= 5)
+    inv_ids = [inv["investigation_id"] for inv in inv_res]
+    check("inv-circuit-discovery registered", "inv-circuit-discovery" in inv_ids)
+    check("inv-perturbation-analysis registered", "inv-perturbation-analysis" in inv_ids)
+
+    audit_res = get("/api/knowledge/audit")
+    check("audit_res concept_count >= 7", audit_res["concept_count"] >= 7)
+    check("audit_res compatible_mapping_count >= 6", audit_res["compatible_mapping_count"] >= 6)
+    check("audit_res incompatible_mapping_count >= 1", audit_res["incompatible_mapping_count"] >= 1) # ammc intentional honest negative
+    print(f"     Retrieved {len(cand_res)} candidates (DNp01/TTMn), {len(inv_res)} investigations, audit: {audit_res['compatible_mapping_count']} compatible, {audit_res['incompatible_mapping_count']} incompatible (honest negative)")
+    print()
+
     print("=" * 60)
-    print("  ALL V1–V5 E2E VERIFICATION CHECKS PASSED (17/17)")
+    print("  ALL V1–V6 E2E VERIFICATION CHECKS PASSED (20/20)")
     print("=" * 60)
     print()
     print("Live data verification status:")
@@ -325,9 +377,11 @@ def main() -> None:
     print("  ✓ V3 Pathway Tracer: Directed Shortest Path, Weight Ranking, Cascade")
     print("  ✓ V4 Neural Debugger: Route Structure & Continuity Validation")
     print("  ✓ V5 Perturbation Lab: Intervention Validation, Comparative Analysis (ΔR, ΔH), Reproducible Controlled Experiments")
+    print("  ✓ V6 NeuroQuery Foundation: Biological Concept Catalog, Scientific Evidence Registry, Concept Mapping Engine, Supported Investigations & Audit")
     print("  ✓ Real Janelia MaleCNS v1.0 Feather data (211,577 neurons, 25.5M connections)")
     print("  ✓ Source Immutability strictly verified: 0 persistent mutations")
 
 
 if __name__ == "__main__":
     main()
+

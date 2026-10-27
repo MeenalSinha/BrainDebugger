@@ -478,3 +478,157 @@ export interface ControlledExperimentResponse {
   multi_level_results?: MultiLevelResult[] | null;
 }
 
+// ── V6: NeuroQuery Biological Knowledge Layer Types ─────────────────────────
+
+export interface EvidenceSource {
+  source_id: string;
+  title: string;
+  authors: string[] | string;
+  year?: number | null;
+  doi?: string | null;
+  url?: string | null;
+  source_type: 'peer_reviewed_paper' | 'official_documentation' | 'dataset_descriptor' | 'curated_annotation';
+  source_version?: string | null;
+  key_findings?: string | null;
+  relevant_section?: string | null;
+  notes?: string | null;
+}
+
+export interface ConceptMapping {
+  mapping_id: string;
+  concept_id: string;
+  target_field: 'type' | 'instance' | 'superclass' | 'body_id';
+  match_type: 'exact' | 'prefix' | 'set';
+  target_values: string[];
+  dataset_version: string;
+  evidence_type: string;
+  evidence_source_ids: string[];
+  rationale: string;
+  known_limitations?: string | null;
+  review_status: 'verified' | 'partially_supported' | 'unsupported' | 'requires_review';
+  mapping_version: string;
+}
+
+export interface BiologicalConcept {
+  concept_id: string;
+  display_name: string;
+  description: string;
+  domain: string;
+  related_concepts: string[];
+  evidence_status: 'verified' | 'partially_supported' | 'unsupported' | 'requires_review';
+  mapping_ids: string[];
+  source_references: string[];
+  dataset_compatibility: 'compatible' | 'partial_coverage' | 'incompatible' | 'untested';
+  coverage_notes?: string | null;
+  limitations?: string | null;
+  catalog_version: string;
+}
+
+export interface SupportedInvestigation {
+  investigation_id: string;
+  name: string;
+  description: string;
+  required_concepts: string[];
+  required_evidence_types: string[];
+  required_dataset_fields: string[];
+  required_graph_operations: string[];
+  supported_parameters: string[];
+  graph_scope_constraints: string;
+  expected_result_structure: string;
+  limitations: string;
+  status: 'supported' | 'partially_supported' | 'unsupported' | 'requires_review';
+  version: string;
+}
+
+export interface KnowledgeCatalogManifest {
+  catalog_id: string;
+  catalog_name: string;
+  version: string;
+  description: string;
+  dataset_version: string;
+  created_at: string;
+  last_updated: string;
+  schema_version: string;
+  maintainer?: string | null;
+  total_concepts: number;
+  total_sources: number;
+  total_mappings: number;
+  total_investigations: number;
+}
+
+export interface KnowledgeStatusResponse {
+  catalog_id: string;
+  catalog_name: string;
+  catalog_version: string;
+  dataset_version: string;
+  catalog_loaded: boolean;
+  total_concepts: number;
+  total_evidence_sources: number;
+  total_mappings: number;
+  total_investigations: number;
+  supported_investigation_count: number;
+  validation_status: string;
+  data_availability_notice: string;
+}
+
+export interface ConceptCandidateNeuron {
+  body_id: number;
+  cell_type?: string | null;
+  instance?: string | null;
+  superclass?: string | null;
+  status?: string | null;
+  consensus_nt?: string | null;
+  matched_mapping_id: string;
+  matched_field: string;
+  matched_value: string;
+  evidence_status: string;
+  evidence_source_ids: string[];
+}
+
+export interface ConceptDetailResponse {
+  concept: BiologicalConcept;
+  sources: EvidenceSource[];
+  mappings: ConceptMapping[];
+  supported_investigations: SupportedInvestigation[];
+  candidate_count?: number | null;
+  dataset_compatibility_status: string;
+}
+
+export interface KnowledgeValidationReport {
+  valid: boolean;
+  catalog_version: string;
+  dataset_version: string;
+  errors: string[];
+  warnings: string[];
+  concept_count: number;
+  verified_concept_count: number;
+  compatible_mapping_count: number;
+  incompatible_mapping_count: number;
+  unresolved_references: string[];
+  summary: string;
+}
+
+export interface ConceptsListResponse {
+  total: number;
+  domain_filter?: string | null;
+  evidence_status_filter?: string | null;
+  compatibility_filter?: string | null;
+  search_query?: string | null;
+  concepts: BiologicalConcept[];
+}
+
+export interface CandidateNeuronsResponse {
+  concept_id: string;
+  total: number;
+  returned: number;
+  limit: number;
+  offset: number;
+  candidates: ConceptCandidateNeuron[];
+}
+
+export interface SupportedInvestigationsResponse {
+  total: number;
+  investigations: SupportedInvestigation[];
+}
+
+

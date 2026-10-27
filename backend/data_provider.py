@@ -96,8 +96,8 @@ class LocalFeatherProvider:
     The caller (the service layer) is responsible for handling that exception.
     """
 
-    def __init__(self, data_dir: Path) -> None:
-        self._data_dir = data_dir
+    def __init__(self, data_dir: Path | str) -> None:
+        self._data_dir = Path(data_dir)
         self._annotations: pd.DataFrame = pd.DataFrame()
         self._weights: pd.DataFrame = pd.DataFrame()
         self._nt: pd.DataFrame = pd.DataFrame()
@@ -112,6 +112,10 @@ class LocalFeatherProvider:
         self._type_post_arr: np.ndarray = np.array([], dtype=object)
         self._pre_index: dict[int, tuple[int, int]] = {}
         self._pre_total_weights: dict[int, int] = {}
+
+    @property
+    def data_dir(self) -> Path:
+        return self._data_dir
 
     def _index_graph(self) -> None:
         """Build high-speed indexed adjacency structures over self._weights."""
@@ -1207,7 +1211,7 @@ class LocalFeatherProvider:
             if w > 0:
                 verified_edges.append((u, v, w))
             else:
-                unverified_edges.append((u, v, 0))
+                unverified_edges.append((u, v, None))
 
         # Count incident outgoing edges to disabled neurons
         incident_edges_count = 0

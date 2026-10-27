@@ -7,20 +7,27 @@
  */
 
 import type {
+  BiologicalConcept,
+  ConceptCandidateNeuron,
+  ConceptDetailResponse,
   ConnectionListResponse,
   ConnectivitySummaryResponse,
   ControlledExperimentRequest,
   ControlledExperimentResponse,
   DownstreamCascadeResponse,
+  EvidenceSource,
   GraphResponse,
   HealthResponse,
   InterventionConfig,
+  KnowledgeStatusResponse,
+  KnowledgeValidationReport,
   Neuron,
   NeuronSearchResponse,
   PathwaySearchResponse,
   PerturbationComparisonRequest,
   PerturbationComparisonResponse,
   PerturbationValidationResponse,
+  SupportedInvestigation,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -194,4 +201,49 @@ export const api = {
   runControlledExperiment(req: ControlledExperimentRequest, signal?: AbortSignal): Promise<ControlledExperimentResponse> {
     return post<ControlledExperimentResponse>('/api/perturbations/experiments', req, signal);
   },
+
+  getKnowledgeStatus(signal?: AbortSignal): Promise<KnowledgeStatusResponse> {
+    return get<KnowledgeStatusResponse>('/api/knowledge/status', signal);
+  },
+
+  listConcepts(params?: {
+    domain?: string;
+    evidenceStatus?: string;
+    q?: string;
+  }, signal?: AbortSignal): Promise<BiologicalConcept[]> {
+    const p = new URLSearchParams();
+    if (params?.domain) p.set('domain', params.domain);
+    if (params?.evidenceStatus) p.set('evidence_status', params.evidenceStatus);
+    if (params?.q?.trim()) p.set('q', params.q.trim());
+    const queryStr = p.toString();
+    return get<BiologicalConcept[]>(`/api/knowledge/concepts${queryStr ? '?' + queryStr : ''}`, signal);
+  },
+
+  getConceptDetail(conceptId: string, signal?: AbortSignal): Promise<ConceptDetailResponse> {
+    return get<ConceptDetailResponse>(`/api/knowledge/concepts/${encodeURIComponent(conceptId)}`, signal);
+  },
+
+  getConceptCandidates(conceptId: string, params?: {
+    limit?: number;
+    offset?: number;
+  }, signal?: AbortSignal): Promise<ConceptCandidateNeuron[]> {
+    const p = new URLSearchParams();
+    if (params?.limit !== undefined) p.set('limit', String(params.limit));
+    if (params?.offset !== undefined) p.set('offset', String(params.offset));
+    const queryStr = p.toString();
+    return get<ConceptCandidateNeuron[]>(`/api/knowledge/concepts/${encodeURIComponent(conceptId)}/candidates${queryStr ? '?' + queryStr : ''}`, signal);
+  },
+
+  listSupportedInvestigations(signal?: AbortSignal): Promise<SupportedInvestigation[]> {
+    return get<SupportedInvestigation[]>('/api/knowledge/investigations', signal);
+  },
+
+  getEvidenceSource(sourceId: string, signal?: AbortSignal): Promise<EvidenceSource> {
+    return get<EvidenceSource>(`/api/knowledge/sources/${encodeURIComponent(sourceId)}`, signal);
+  },
+
+  auditKnowledgeCatalog(signal?: AbortSignal): Promise<KnowledgeValidationReport> {
+    return get<KnowledgeValidationReport>('/api/knowledge/audit', signal);
+  },
 };
+

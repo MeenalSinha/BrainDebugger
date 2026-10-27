@@ -48,7 +48,7 @@ class PerturbationService:
             for (u, v, w) in val["verified_edges"]
         ]
         unverified_edges = [
-            DisabledEdge(body_pre=u, body_post=v, weight=0)
+            DisabledEdge(body_pre=u, body_post=v, weight=None)
             for (u, v, _) in val["unverified_edges"]
         ]
 

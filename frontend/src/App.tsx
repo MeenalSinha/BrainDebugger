@@ -7,7 +7,7 @@
  * All neuron data comes from the real MaleCNS v1.0 dataset via the backend API.
  */
 import React, { useCallback, useState } from 'react';
-import { Network, GitBranch, Bug, FlaskConical } from 'lucide-react';
+import { Network, GitBranch, Bug, FlaskConical, BookOpen } from 'lucide-react';
 import { StatusPill } from './components/StatusPill';
 import { ExplorerPanel } from './components/ExplorerPanel';
 import { ConnectomeView } from './components/ConnectomeView';
@@ -16,6 +16,7 @@ import { PathwayTracer } from './components/PathwayTracer';
 import { PathwayGraphView } from './components/PathwayGraphView';
 import { NeuralDebugger } from './components/NeuralDebugger';
 import { PerturbationLab } from './components/PerturbationLab';
+import { KnowledgeExplorer } from './components/KnowledgeExplorer';
 import type {
   NeuronSearchResult,
   PathwaySearchResponse,
@@ -24,7 +25,7 @@ import type {
 } from './types';
 
 export default function App() {
-  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger' | 'perturbation'>('explorer');
+  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger' | 'perturbation' | 'knowledge'>('explorer');
   const [selectedBodyId, setSelectedBodyId] = useState<number | null>(null);
 
   // Pathway & Cascade state
@@ -118,6 +119,14 @@ export default function App() {
           >
             <FlaskConical size={14} />
             <span>Perturbation Lab</span>
+          </button>
+          <button
+            className={`btn btn-sm ${workspace === 'knowledge' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setWorkspace('knowledge')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <BookOpen size={14} />
+            <span>Knowledge Explorer</span>
           </button>
         </div>
 
@@ -302,6 +311,47 @@ export default function App() {
                 onSelectNeuron={handleSelectNode}
                 initialSourceId={pathwaySourceId}
                 initialTargetId={pathwayTargetId}
+              />
+            </section>
+
+            {/* Right: Inspector */}
+            <section
+              className="panel"
+              style={{ display: 'flex', flexDirection: 'column' }}
+              aria-label="Neuron inspector panel"
+            >
+              <InspectorPanel
+                bodyId={selectedBodyId}
+                onSelectPartner={handleSelectPartner}
+                onSetPathwaySource={handleSetPathwaySource}
+                onSetPathwayTarget={handleSetPathwayTarget}
+                onTraceCascade={handleTraceCascade}
+              />
+            </section>
+          </>
+        )}
+
+        {workspace === 'knowledge' && (
+          <>
+            {/* Center/Left: Knowledge Explorer Workspace */}
+            <section
+              style={{
+                gridColumn: '1 / 3',
+                position: 'relative',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                minWidth: 0,
+              }}
+              aria-label="Knowledge Explorer Workspace"
+            >
+              <KnowledgeExplorer
+                onSelectNeuron={handleSelectNode}
+                onSetPathwaySource={handleSetPathwaySource}
+                onNavigateToExplorer={(bodyId) => {
+                  setSelectedBodyId(bodyId);
+                  setWorkspace('explorer');
+                }}
               />
             </section>
 

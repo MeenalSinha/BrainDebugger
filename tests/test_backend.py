@@ -1193,4 +1193,187 @@ class TestV5PerturbationLab:
         res = svc.run_controlled_experiment(req)
         assert res.selected_interventions.disabled_neurons == [4]
 
+    def test_validate_interventions_unverified_edge_weight_is_none(self):
+        from backend.perturbation_service import PerturbationService
+        from backend.models import InterventionConfig, DisabledEdge
+
+        p = self._make_graph_provider()
+        svc = PerturbationService(p)
+
+        # Edge (1, 9999) does not exist in graph
+        cfg = InterventionConfig(
+            disabled_neurons=[1, 99999],
+            disabled_edges=[DisabledEdge(body_pre=1, body_post=9999)],
+        )
+        val = svc.validate_interventions(cfg)
+        assert val.valid is False
+        assert 1 in val.verified_neurons
+        assert 99999 in val.unverified_neurons
+        assert len(val.unverified_edges) == 1
+        # Crucial check: unverified edge weight must be None (not 0)
+        assert val.unverified_edges[0].weight is None
+        assert val.unverified_edges[0].body_pre == 1
+        assert val.unverified_edges[0].body_post == 9999
+
+
+# ── V6 NeuroQuery Knowledge Layer Unit Tests ─────────────────────────────────
+
+class TestV6KnowledgeLayer:
+    """Unit tests for NeuroQuery biological knowledge catalog and mapping engine."""
+
+    def _make_mock_provider(self):
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        from pathlib import Path
+
+        p = LocalFeatherProvider(Path("data"))
+        p._annotations = pd.DataFrame({
+            "bodyId": [10001, 10002, 800146, 20001, 20002, 30001],
+            "type": ["DNp01", "DNp01", "TTMn", "T4a", "T5a", "UnknownType"],
+            "instance": ["DNp01_L", "DNp01_R", "TTMn_R", "T4a_L", "T5a_L", None],
+            "superclass": ["descending_neuron", "descending_neuron", "vnc_motor", "ol_intrinsic", "ol_intrinsic", "vnc"],
+            "status": ["Traced"] * 6,
+        }).set_index("bodyId", drop=False)
+        p._loaded = True
+        return p
+
+    def test_knowledge_catalog_loading_and_status(self):
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+        svc = KnowledgeService(p, knowledge_dir="data/knowledge")
+
+        status = svc.get_status()
+        assert status.catalog_loaded is True
+        assert status.total_concepts >= 6
+        assert status.total_evidence_sources >= 5
+        assert status.total_mappings >= 6
+        assert status.total_investigations >= 5
+        assert status.supported_investigation_count >= 5
+
+    def test_concept_listing_and_filtering(self):
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+        svc = KnowledgeService(p, knowledge_dir="data/knowledge")
+
+        # List all
+        all_concepts = svc.list_concepts()
+        assert len(all_concepts) >= 6
+
+        # Filter by domain
+        vis_concepts = svc.list_concepts(domain="visual_processing")
+        assert len(vis_concepts) >= 3
+        for c in vis_concepts:
+            assert c.domain == "visual_processing"
+
+        # Filter by evidence status
+        verified_concepts = svc.list_concepts(evidence_status="verified")
+        assert len(verified_concepts) >= 3
+        for c in verified_concepts:
+            assert c.evidence_status == "verified"
+
+        # Search query
+        esc_concepts = svc.list_concepts(query="escape")
+        assert any(c.concept_id == "giant_fiber_escape_circuit" for c in esc_concepts)
+
+    def test_concept_detail_with_sources_and_mappings(self):
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+        svc = KnowledgeService(p, knowledge_dir="data/knowledge")
+
+        detail = svc.get_concept("giant_fiber_escape_circuit")
+        assert detail is not None
+        assert detail.concept.concept_id == "giant_fiber_escape_circuit"
+        assert len(detail.sources) >= 1
+        assert any("Namiki" in s.authors for s in detail.sources)
+        assert len(detail.mappings) >= 1
+        assert detail.mappings[0].target_field == "type"
+        assert "DNp01" in detail.mappings[0].target_values
+        assert len(detail.supported_investigations) >= 1
+
+    def test_candidate_neuron_dynamic_retrieval(self):
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+        svc = KnowledgeService(p, knowledge_dir="data/knowledge")
+
+        # Giant fiber concept maps to DNp01 and TTMn
+        candidates = svc.get_candidate_neurons("giant_fiber_escape_circuit")
+        bids = {c.body_id for c in candidates}
+        assert 10001 in bids
+        assert 10002 in bids
+        assert 800146 in bids
+
+        # Check candidate metadata provenance
+        c1 = next(c for c in candidates if c.body_id == 10001)
+        assert c1.cell_type == "DNp01"
+        assert c1.matched_field == "type"
+        assert c1.matched_mapping_id == "map-escape-dnp01-ttmn"
+        assert "src-namiki-2018" in c1.evidence_source_ids
+
+        # Visual motion maps to T4a, T5a
+        motion_cands = svc.get_candidate_neurons("visual_motion_detection_t4_t5")
+        motion_bids = {c.body_id for c in motion_cands}
+        assert 20001 in motion_bids
+        assert 20002 in motion_bids
+
+    def test_evidence_source_lookup(self):
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+        svc = KnowledgeService(p, knowledge_dir="data/knowledge")
+
+        src = svc.get_evidence_source("src-schlegel-2024")
+        assert src is not None
+        assert "Schlegel" in src.authors
+        assert src.year == 2024
+        assert src.doi == "10.1038/s41586-024-07968-y"
+        assert src.journal == "Nature"
+
+    def test_knowledge_validation_report_catches_broken_references(self, tmp_path):
+        import json
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+
+        # Create a broken catalog in temp dir
+        broken_concept = [{
+            "concept_id": "broken_concept",
+            "display_name": "Broken Concept",
+            "description": "Test",
+            "domain": "test",
+            "related_concepts": ["nonexistent_concept"],
+            "evidence_status": "verified",
+            "mapping_ids": ["nonexistent_mapping"],
+            "source_references": ["nonexistent_source"],
+            "dataset_compatibility": "compatible",
+            "catalog_version": "1.0.0"
+        }]
+        (tmp_path / "concepts.json").write_text(json.dumps(broken_concept), encoding="utf-8")
+        (tmp_path / "evidence-sources.json").write_text("[]", encoding="utf-8")
+        (tmp_path / "concept-mappings.json").write_text("[]", encoding="utf-8")
+        (tmp_path / "supported-investigations.json").write_text("[]", encoding="utf-8")
+        (tmp_path / "catalog-manifest.json").write_text(json.dumps({
+            "catalog_id": "test", "catalog_name": "Test", "version": "1.0.0", "description": "",
+            "dataset_version": "male-cns:v1.0", "created_at": "", "last_updated": "", "schema_version": "1.0",
+            "total_concepts": 1, "total_sources": 0, "total_mappings": 0, "total_investigations": 0
+        }), encoding="utf-8")
+
+        svc = KnowledgeService(p, knowledge_dir=tmp_path)
+        report = svc.validate_catalog()
+        assert report.valid is False
+        assert any("nonexistent_source" in e for e in report.errors)
+        assert any("nonexistent_mapping" in e for e in report.errors)
+        assert any("nonexistent_concept" in w for w in report.warnings)
+
+    def test_unsupported_concept_honest_representation(self):
+        from backend.knowledge_service import KnowledgeService
+        p = self._make_mock_provider()
+        svc = KnowledgeService(p, knowledge_dir="data/knowledge")
+
+        # Auditory concept is marked requires_review & incompatible
+        aud_concept = svc._concepts.get("auditory_courtship_song_circuit")
+        assert aud_concept is not None
+        assert aud_concept.evidence_status == "requires_review"
+        assert aud_concept.dataset_compatibility == "incompatible"
+        assert "not systematically mapped" in aud_concept.coverage_notes
+
+
+
 

@@ -19,7 +19,8 @@ venv/
 env/
 
 # Data files (large binary - tracked separately or via git-lfs)
-data/
+data/*
+!data/knowledge/
 *.feather
 *.parquet
 

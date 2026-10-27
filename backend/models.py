@@ -514,3 +514,144 @@ class ControlledExperimentResponse(BaseModel):
     multi_level_results: Optional[list[MultiLevelResult]] = None
 
 
+# ── V6: NeuroQuery Foundation & Biological Knowledge Layer Models ─────────────
+
+class EvidenceSource(BaseModel):
+    """A peer-reviewed scientific paper, dataset documentation, or curated annotation source."""
+    source_id: str
+    title: str
+    authors: str
+    year: int
+    journal: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    source_type: str = "peer_reviewed_paper"
+    version: Optional[str] = None
+    accessed_date: Optional[str] = None
+    relevant_section: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ConceptMapping(BaseModel):
+    """Rule linking a biological concept to MaleCNS dataset annotations."""
+    mapping_id: str
+    concept_id: str
+    target_field: str  # 'type' | 'instance' | 'superclass' | 'body_id'
+    match_type: str = "exact"  # 'exact' | 'prefix' | 'set'
+    target_values: list[str] = Field(default_factory=list)
+    dataset_version: str = "male-cns:v1.0"
+    evidence_type: str = "functional_connectomics"
+    evidence_source_ids: list[str] = Field(default_factory=list)
+    rationale: str
+    known_limitations: Optional[str] = None
+    review_status: str = "verified"  # 'verified' | 'partially_supported' | 'unsupported' | 'requires_review'
+    mapping_version: str = "1.0.0"
+
+
+class BiologicalConcept(BaseModel):
+    """A structured biological concept in the NeuroQuery knowledge catalog."""
+    concept_id: str
+    display_name: str
+    description: str
+    domain: str  # 'visual_processing' | 'motor_control' | 'olfactory' | 'mechanosensory' | etc.
+    related_concepts: list[str] = Field(default_factory=list)
+    evidence_status: str = "verified"  # 'verified' | 'partially_supported' | 'unsupported' | 'requires_review'
+    mapping_ids: list[str] = Field(default_factory=list)
+    source_references: list[str] = Field(default_factory=list)
+    dataset_compatibility: str = "compatible"  # 'compatible' | 'partial_coverage' | 'incompatible' | 'untested'
+    coverage_notes: Optional[str] = None
+    limitations: Optional[str] = None
+    catalog_version: str = "1.0.0"
+
+
+class SupportedInvestigation(BaseModel):
+    """A registered analysis pipeline that BrainDebugger can perform on the connectome."""
+    investigation_id: str
+    name: str
+    description: str
+    required_concepts: list[str] = Field(default_factory=list)
+    required_evidence_types: list[str] = Field(default_factory=list)
+    required_dataset_fields: list[str] = Field(default_factory=list)
+    required_graph_operations: list[str] = Field(default_factory=list)
+    supported_parameters: list[str] = Field(default_factory=list)
+    graph_scope_constraints: str
+    expected_result_structure: str
+    limitations: str
+    status: str = "supported"  # 'supported' | 'partially_supported' | 'unsupported' | 'requires_review'
+    version: str = "1.0.0"
+
+
+class KnowledgeCatalogManifest(BaseModel):
+    """Metadata describing the loaded biological knowledge catalog."""
+    catalog_id: str
+    catalog_name: str
+    version: str
+    description: str
+    dataset_version: str = "male-cns:v1.0"
+    created_at: str
+    last_updated: str
+    schema_version: str = "1.0"
+    maintainer: Optional[str] = None
+    total_concepts: int = 0
+    total_sources: int = 0
+    total_mappings: int = 0
+    total_investigations: int = 0
+
+
+class KnowledgeStatusResponse(BaseModel):
+    """Overall status and health of the biological knowledge layer."""
+    catalog_id: str
+    catalog_name: str
+    catalog_version: str
+    dataset_version: str
+    catalog_loaded: bool
+    total_concepts: int
+    total_evidence_sources: int
+    total_mappings: int
+    total_investigations: int
+    supported_investigation_count: int
+    validation_status: str
+    data_availability_notice: str
+
+
+class ConceptCandidateNeuron(BaseModel):
+    """A real neuron from the MaleCNS dataset matching a biological concept mapping."""
+    body_id: int
+    cell_type: Optional[str] = None
+    instance: Optional[str] = None
+    superclass: Optional[str] = None
+    status: Optional[str] = None
+    consensus_nt: Optional[str] = None
+    matched_mapping_id: str
+    matched_field: str
+    matched_value: str
+    evidence_status: str
+    evidence_source_ids: list[str] = Field(default_factory=list)
+
+
+class ConceptDetailResponse(BaseModel):
+    """Full detail of a biological concept with linked sources, mappings, and capabilities."""
+    concept: BiologicalConcept
+    sources: list[EvidenceSource] = Field(default_factory=list)
+    mappings: list[ConceptMapping] = Field(default_factory=list)
+    supported_investigations: list[SupportedInvestigation] = Field(default_factory=list)
+    candidate_count: Optional[int] = None
+    dataset_compatibility_status: str
+
+
+class KnowledgeValidationReport(BaseModel):
+    """Automated audit report of knowledge catalog integrity and dataset compatibility."""
+    valid: bool
+    catalog_version: str
+    dataset_version: str
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    concept_count: int
+    verified_concept_count: int
+    compatible_mapping_count: int
+    incompatible_mapping_count: int
+    unresolved_references: list[str] = Field(default_factory=list)
+    summary: str
+
+
+

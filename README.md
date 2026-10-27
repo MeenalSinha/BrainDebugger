@@ -285,6 +285,61 @@ npm run build --prefix frontend
 - V3 ✅ Neural Pathway Tracer & Downstream Cascade Analysis
 - V4 ✅ Neural Debugger (interactive structural path tracing, breakpoints & execution history)
 - V5 ✅ Perturbation Lab (simulated neural damage, connectivity analysis & network resilience)
+- V6 ✅ NeuroQuery Foundation & Biological Knowledge Layer (versioned concepts, verified evidence with DOIs, mapping engine, supported investigations & Knowledge Explorer)
+
+---
+
+## Version 6 Features — NeuroQuery Foundation & Biological Knowledge Layer
+
+Version 6 establishes the evidence-grounded biological knowledge infrastructure for **NeuroQuery** ("Ask the Connectome"). It connects abstract biological concepts to verified annotations in the Janelia MaleCNS v1.0 dataset, authentic peer-reviewed scientific citations with direct DOIs, actual connectivity, and supported graph investigations.
+
+### 1. Biological Concept Catalog (`data/knowledge/concepts.json`)
+- Versioned, typed catalog schema (`catalog_version: 1.0.0`) describing biological concepts across domains:
+  - `visual_processing`: T4/T5 elementary motion detection, Mi1/Tm3 inputs, Dm8/Dm9 color vision.
+  - `motor_control`: Giant Fiber escape & flight initiation circuit (`DNp01` $\to$ `TTMn`), LC4 visual looming escape.
+  - `olfactory`: Antennal lobe projection neuron odor classification (`PN`).
+  - `mechanosensory`: AMMC courtship song interneurons (cataloged honestly as `requires_review` and `incompatible` to verify negative handling without fabrication).
+- Categorizes concepts into `verified`, `partially_supported`, `requires_review`, and `unsupported`.
+
+### 2. Scientific Evidence Registry (`data/knowledge/evidence-sources.json`)
+- Every mapping is backed by traceable peer-reviewed literature or official dataset documentation.
+- Authentic DOIs linking directly to publisher repositories (e.g., Nature, eLife, Journal of Experimental Biology, Current Biology):
+  - **Schlegel et al. (2024)** *Nature* `10.1038/s41586-024-07968-y`
+  - **Namiki et al. (2018)** *eLife* `10.7554/eLife.34272`
+  - **Takemura et al. (2017)** *eLife* `10.7554/eLife.24394`
+  - **Borst & Helmstaedter (2015)** *Nature Rev Neurosci* `10.1038/nrn4050`
+  - **Card & Dickinson (2008)** *J Exp Biol* `10.1242/jeb.010462`
+  - **Bates et al. (2020)** *Curr Biol* `10.1016/j.cub.2020.06.042`
+- Strict provenance separation: evidence type (`functional_connectomics`, `anatomical_cell_typing`) is decoupled from review status (`verified`, `partially_supported`).
+
+### 3. Concept-to-Dataset Mapping Engine (`backend/knowledge_service.py`)
+- Maps biological concepts to real MaleCNS annotation fields (`type`, `instance`, `superclass`) using `exact`, `prefix`, or `set` match rules.
+- **Dynamic Candidate Retrieval**: Queries loaded `_annotations` in memory without reloading data files. Returns actual body IDs, instances, neurotransmitters, and mapping provenance.
+- Distinguishes verified matches, unverified candidates, no matching records, and unsupported concepts without creating synthetic neurons or fabricated labels.
+
+### 4. Supported Connectome Investigation Registry (`data/knowledge/supported-investigations.json`)
+- Formally registers analysis pipelines implemented in BrainDebugger:
+  - `inv-circuit-discovery`: Retrieve verified candidate neurons and recorded connectivity.
+  - `inv-neuron-inspection`: Open detailed single-neuron anatomy, partner tables, and neurotransmitter predictions.
+  - `inv-pathway-search`: Multi-hop directed shortest-path and weight-prioritized search.
+  - `inv-downstream-cascade`: Compute multi-hop downstream reachability cascades.
+  - `inv-perturbation-analysis`: Run non-destructive in-silico lesions and network resilience experiments.
+
+### 5. Automated Catalog Validator (`scripts/validate_knowledge.py`)
+- Command-line tool for continuous integration and development auditing:
+  ```powershell
+  python scripts/validate_knowledge.py
+  ```
+- Validates JSON schemas, detects broken mapping references or dangling source IDs, and verifies dataset annotation compatibility against loaded MaleCNS files.
+
+### 6. Knowledge Explorer Workspace (`frontend/src/components/KnowledgeExplorer.tsx`)
+- Lightweight workspace in the topbar switcher:
+  - **Concept Browser**: Search concepts, filter by biological domain, evidence status, and dataset compatibility.
+  - **Concept Details**: Displays scientific descriptions, domain tags, limitations, and caveats.
+  - **Evidence Cards**: Lists peer-reviewed publications with clickable DOI links.
+  - **Mapping Rules**: Documents target annotation fields, target values, rationales, and known limitations.
+  - **Candidate Neurons Table**: Lists actual matching neurons from MaleCNS v1.0 with 1-click navigation to the **Neuron Inspector**, **Connectome Explorer**, or **Pathway Tracer**.
+  - **Audit Modal**: Instant inspection of catalog health, schema validity, compatible/incompatible mappings count, and coverage notes.
 
 ---
 
