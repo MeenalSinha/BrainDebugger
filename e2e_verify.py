@@ -151,18 +151,84 @@ def main() -> None:
     check("match_field == 'body_id'", s3["results"][0]["match_field"] == "body_id")
     print()
 
+    # ── 10. V2 Connectivity Summary ────────────────────────────────
+    print(f"10. V2 Connectivity summary (body_id={body_id})")
+    cs = get(f"/api/neurons/{body_id}/connectivity-summary")
+    check("body_id matches", cs["body_id"] == body_id)
+    check("incoming exists", "incoming" in cs)
+    check("outgoing exists", "outgoing" in cs)
+    inc_sum = cs["incoming"]
+    out_sum = cs["outgoing"]
+    check("incoming partner_count >= 0", inc_sum["partner_count"] >= 0, inc_sum["partner_count"])
+    check("outgoing partner_count >= 0", out_sum["partner_count"] >= 0, out_sum["partner_count"])
+    check("incoming total_weight >= 0", inc_sum["total_weight"] >= 0, inc_sum["total_weight"])
+    check("outgoing total_weight >= 0", out_sum["total_weight"] >= 0, out_sum["total_weight"])
+    check("is_traced_only_subset", cs["is_traced_only_subset"] is True)
+    check("dataset matches", cs["dataset"] == "male-cns:v1.0")
+    print(f"     in_partners={inc_sum['partner_count']} in_weight={inc_sum['total_weight']:,} | "
+          f"out_partners={out_sum['partner_count']} out_weight={out_sum['total_weight']:,}")
+    print()
+
+    # ── 11. V3 Directed Pathway Search ─────────────────────────────
+    # Pick a direct postsynaptic target from outgoing connections if available
+    target_id = out["connections"][0]["body_post"] if out["connections"] else 11391
+    print(f"11. V3 Pathway search ({body_id} -> {target_id})")
+    paths = get(f"/api/paths?source_body_id={body_id}&target_body_id={target_id}&max_hops=3&max_paths=3&strategy=shortest")
+    check("source_body_id matches", paths["source_body_id"] == body_id)
+    check("target_body_id matches", paths["target_body_id"] == target_id)
+    check("Paths found >= 1", len(paths["paths"]) >= 1, len(paths["paths"]))
+    p0 = paths["paths"][0]
+    check("p0 hops >= 1", p0["hops"] >= 1, p0["hops"])
+    check("p0 nodes start with source", p0["nodes"][0]["body_id"] == body_id)
+    check("p0 nodes end with target", p0["nodes"][-1]["body_id"] == target_id)
+    check("p0 edge count equals hops", len(p0["edges"]) == p0["hops"])
+    for e in p0["edges"]:
+        check(f"Edge {e['body_pre']}->{e['body_post']} weight > 0", e["weight"] > 0)
+    print(f"     Found {len(paths['paths'])} routes, shortest hops={p0['hops']}, total_weight={p0['total_weight']}")
+    print()
+
+    # ── 12. V3 Weight-Prioritized Pathway Ranking ──────────────────
+    print(f"12. V3 Weight-prioritized ranking ({body_id} -> {target_id})")
+    wp_paths = get(f"/api/paths?source_body_id={body_id}&target_body_id={target_id}&max_hops=3&max_paths=3&strategy=weight_prioritized")
+    check("Weight-prioritized paths found >= 1", len(wp_paths["paths"]) >= 1)
+    wp0 = wp_paths["paths"][0]
+    check("Score is positive float", wp0["score"] is not None and wp0["score"] > 0, wp0["score"])
+    check("Log cost is positive float", wp0["log_cost"] is not None and wp0["log_cost"] >= 0, wp0["log_cost"])
+    print(f"     Route score={wp0['score']:.6f}, log_cost={wp0['log_cost']:.4f}")
+    print()
+
+    # ── 13. V3 Downstream Cascade Analysis ─────────────────────────
+    print(f"13. V3 Downstream cascade (source={body_id}, max_hops=2)")
+    cascade = get(f"/api/neurons/{body_id}/downstream-cascade?max_hops=2&min_weight=10&max_nodes=50")
+    check("source_body_id matches", cascade["source_body_id"] == body_id)
+    check("total_unique_nodes >= 1", cascade["total_unique_nodes"] >= 1, cascade["total_unique_nodes"])
+    check("layers non-empty", len(cascade["layers"]) >= 1)
+    check("Layer 0 hop == 0", cascade["layers"][0]["hop"] == 0)
+    print(f"     Cascade reached {cascade['total_unique_nodes']} unique nodes across {len(cascade['layers'])} layers")
+    print()
+
+    # ── 14. V4 Trace Path Continuity Validation ────────────────────
+    print("14. V4 Debugger Trace Path Continuity")
+    # Verify that consecutive node pairs match the edge sequence
+    for i in range(len(p0["nodes"]) - 1):
+        curr_node = p0["nodes"][i]["body_id"]
+        next_node = p0["nodes"][i + 1]["body_id"]
+        edge = p0["edges"][i]
+        check(f"Step {i} edge source == curr_node", edge["body_pre"] == curr_node)
+        check(f"Step {i} edge target == next_node", edge["body_post"] == next_node)
+    print("     Path continuity verified for trace execution: ✓")
+    print()
+
     print("=" * 60)
-    print("  ALL E2E VERIFICATION CHECKS PASSED")
+    print("  ALL V1–V4 E2E VERIFICATION CHECKS PASSED")
     print("=" * 60)
     print()
     print("Live data verification status:")
-    print("  ✓ Backend accessed the real MaleCNS v1.0 dataset")
-    print("  ✓ 211,577 neurons and 25,563,197 connections loaded")
-    print("  ✓ Neuron search returns real results")
-    print("  ✓ Connection direction preserved (pre → post)")
-    print("  ✓ Graph edge semantics correct (source=pre, target=post)")
-    print("  ✓ Not-found returns 404 (not fabricated data)")
-    print("  ✓ Empty search returns empty results (no fabricated data)")
+    print("  ✓ V1 Connectome Explorer: Search, Selection, Directed Subgraph")
+    print("  ✓ V2 Neuron Inspector: Profiles, Connectivity Summaries, Connections")
+    print("  ✓ V3 Pathway Tracer: Directed Shortest Path, Weight Ranking, Cascade")
+    print("  ✓ V4 Neural Debugger: Route Structure & Continuity Validation")
+    print("  ✓ Real Janelia MaleCNS v1.0 Feather data (211,577 neurons, 25.5M connections)")
 
 
 if __name__ == "__main__":
