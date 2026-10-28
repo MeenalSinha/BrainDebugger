@@ -437,8 +437,84 @@ def main() -> None:
     print(f"     Audit report: {val_res['summary']}")
     print()
 
+    # ── 26. V8 Plan Execution — Visual Motion Directional Circuit ──
+    print("26. V8 Circuit Discovery Execution (Visual Motion Directional Circuit)")
+    exec_req = {
+        "plan": plan,
+        "max_candidates": 20,
+        "max_subgraph_nodes": 40,
+        "min_edge_weight": 1,
+    }
+    exec_res = post("/api/neuroquery/execute", exec_req)
+    check("execution_id present", bool(exec_res.get("execution_id")))
+    check("intent == circuit_discovery", exec_res["intent"] == "circuit_discovery")
+    check("execution_status is completed/partial", exec_res["execution_status"] in ["completed", "partially_completed"])
+    check("candidates discovered >= 2", len(exec_res["candidate_neurons"]) >= 2, len(exec_res["candidate_neurons"]))
+    cand0 = exec_res["candidate_neurons"][0]
+    check("cand0 has verified tier", "Tier 1" in cand0["evidence_tier"], cand0["evidence_tier"])
+    check("subgraph nodes >= 2", len(exec_res["subgraph_nodes"]) >= 2, len(exec_res["subgraph_nodes"]))
+    check("subgraph edges >= 1", len(exec_res["subgraph_edges"]) >= 1, len(exec_res["subgraph_edges"]))
+    check("metrics average_weight > 0", exec_res["structural_metrics"]["average_weight"] > 0)
+    print(f"     Execution {exec_res['execution_id']}: {len(exec_res['candidate_neurons'])} candidates, "
+          f"{len(exec_res['subgraph_nodes'])} nodes, {len(exec_res['subgraph_edges'])} edges in {exec_res['execution_duration_ms']}ms")
+    print()
+
+    # ── 27. V8 Transparent Dual-Criteria Candidate Rankings ────────
+    print("27. V8 Transparent Dual-Criteria Candidate Rankings")
+    check("cand0 score > 0", cand0["ranking_score"] > 0, cand0["ranking_score"])
+    check("cand0 explanation present", "Rank #1" in cand0["explanation"])
+    check("cand0 evidence_tier is Tier 1", cand0["evidence_tier"] == "Tier 1 (Verified)")
+    check("ranking scores monotonic", all(exec_res["candidate_neurons"][i]["ranking_score"] >= exec_res["candidate_neurons"][i+1]["ranking_score"]
+                                          for i in range(len(exec_res["candidate_neurons"]) - 1)))
+    print(f"     Top Candidate: bodyId={cand0['body_id']} ({cand0['cell_type']}) score={cand0['ranking_score']} — {cand0['explanation']}")
+    print()
+
+    # ── 28. V8 Tool Handoff: Structural Pathway Search Execution ───
+    print("28. V8 Tool Handoff: Structural Pathway Search Execution")
+    path_q = {"question": "Find the synaptic pathway from descending neuron 10001 to motor neuron 800146."}
+    path_plan = post("/api/neuroquery/plan", path_q)
+    path_exec = post("/api/neuroquery/execute", {"plan": path_plan, "max_hops": 2})
+    check("path_exec status is completed", path_exec["execution_status"] == "completed")
+    check("path_exec tool handoff is pathway_tracer", path_exec.get("existing_tool_handoff", {}).get("tool") == "pathway_tracer")
+    check("path_exec subnodes >= 2", len(path_exec["subgraph_nodes"]) >= 2)
+    print(f"     Pathway Tool Handoff verified: 10001 -> 800146 via Pathway Tracer")
+    print()
+
+    # ── 29. V8 Tool Handoff: Downstream Reachability Execution ─────
+    print("29. V8 Tool Handoff: Downstream Reachability Execution")
+    casc_plan = {
+        "plan_id": "plan-e2e-cascade",
+        "plan_schema_version": "1.0.0",
+        "original_question": "Trace downstream reachability cascade from 10001",
+        "normalized_question": "Downstream cascade from 10001",
+        "intent": "downstream_reachability",
+        "requested_entities": {"body_id": 10001},
+        "parameters": {"max_hops": 2},
+        "planned_operations": [],
+        "support_status": "ready_for_review",
+        "explanation": "Downstream reachability test plan",
+        "created_at": "2026-10-28T00:00:00Z",
+    }
+    casc_exec = post("/api/neuroquery/execute", {"plan": casc_plan})
+    check("casc_exec status completed", casc_exec["execution_status"] == "completed")
+    check("casc_exec tool handoff is cascade_analyzer", casc_exec.get("existing_tool_handoff", {}).get("tool") == "cascade_analyzer")
+    check("casc_exec reachable_count > 0", casc_exec.get("existing_tool_handoff", {}).get("reachable_count", 0) > 0)
+    print(f"     Cascade Tool Handoff verified: {casc_exec.get('existing_tool_handoff', {}).get('reachable_count')} reachable neurons")
+    print()
+
+    # ── 30. V8 Persistent Execution Record & Scientific Notice ─────
+    print("30. V8 Persistent Execution Record & Scientific Limitations")
+    rec = get(f"/api/neuroquery/executions/{exec_res['execution_id']}")
+    check("rec execution_id matches", rec["execution_id"] == exec_res["execution_id"])
+    check("rec status matches", rec["status"] == exec_res["execution_status"])
+    check("rec operations logged >= 2", len(rec["operations_executed"]) >= 2)
+    check("rec logs recorded >= 2", len(rec["logs"]) >= 2)
+    check("limitations contains traced-only", any("Traced-only" in lim or "traced-only" in lim for lim in exec_res["limitations"]))
+    print(f"     Execution Record {rec['execution_id']} successfully tracked: operations={rec['operations_executed']}")
+    print()
+
     print("=" * 60)
-    print("  ALL V1–V7 E2E VERIFICATION CHECKS PASSED (25/25)")
+    print("  ALL V1–V8 E2E VERIFICATION CHECKS PASSED (30/30)")
     print("=" * 60)
     print()
     print("Live data verification status:")
@@ -449,11 +525,13 @@ def main() -> None:
     print("  ✓ V5 Perturbation Lab: Intervention Validation, Comparative Analysis (ΔR, ΔH), Reproducible Controlled Experiments")
     print("  ✓ V6 NeuroQuery Foundation: Biological Concept Catalog, Scientific Evidence Registry, Concept Mapping Engine, Supported Investigations & Audit")
     print("  ✓ V7 NeuroQuery Natural-Language Planner: Intent Classification, V6 Concept Resolution, Plan Validation & Clarification Flow")
+    print("  ✓ V8 NeuroQuery Circuit Discovery Engine: Plan Execution, Candidate Discovery from MaleCNS, Bounded Directed Subgraphs, Transparent Dual-Criteria Rankings, and Tool Handoffs")
     print("  ✓ Real Janelia MaleCNS v1.0 Feather data (211,577 neurons, 25.5M connections)")
     print("  ✓ Source Immutability strictly verified: 0 persistent mutations")
 
 
 if __name__ == "__main__":
     main()
+
 
 

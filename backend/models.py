@@ -751,5 +751,128 @@ class NeuroQueryConfigResponse(BaseModel):
     notice: str
 
 
+# ── V8: NeuroQuery Evidence-Grounded Neural Circuit Discovery Models ────────
+
+class ExecutionStatus(str, Enum):
+    """Execution status for a NeuroQuery investigation."""
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    partially_completed = "partially_completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class DiscoveredCandidateNeuron(BaseModel):
+    """A verified candidate neuron retrieved from MaleCNS annotations matching a concept."""
+    body_id: int
+    cell_type: Optional[str] = None
+    instance: Optional[str] = None
+    superclass: Optional[str] = None
+    subclass: Optional[str] = None
+    consensus_nt: Optional[str] = None
+    matched_concept_ids: list[str] = Field(default_factory=list)
+    matched_mapping_ids: list[str] = Field(default_factory=list)
+    matched_field: str
+    matched_value: str
+    evidence_status: str  # 'verified' | 'partially_supported' | 'requires_review' | 'unsupported'
+    evidence_tier: str  # 'Tier 1 (Verified)' | 'Tier 2 (Partially Supported)' | 'Tier 3 (Under Review)'
+    subgraph_in_degree: int = 0
+    subgraph_out_degree: int = 0
+    subgraph_total_weight: int = 0
+    ranking_score: float = 0.0
+    explanation: str = ""
+
+
+class CircuitSubgraphNode(BaseModel):
+    """A node in the discovered bounded neural circuit subgraph."""
+    id: str
+    body_id: int
+    cell_type: Optional[str] = None
+    instance: Optional[str] = None
+    superclass: Optional[str] = None
+    consensus_nt: Optional[str] = None
+    is_candidate: bool = False
+    matched_concept_ids: list[str] = Field(default_factory=list)
+    evidence_status: Optional[str] = None
+    degree: int = 0
+    total_weight: int = 0
+
+
+class CircuitSubgraphEdge(BaseModel):
+    """A directed, weighted synaptic connection in the discovered circuit."""
+    id: str
+    source: int
+    target: int
+    weight: int
+    is_inter_candidate: bool = False
+
+
+class CircuitStructuralMetrics(BaseModel):
+    """Structural properties calculated for the bounded discovered subgraph."""
+    total_nodes: int
+    total_edges: int
+    candidate_nodes_count: int
+    partner_nodes_count: int
+    density: float
+    average_weight: float
+    max_weight: int
+    top_hub_body_id: Optional[int] = None
+    connected_components: int = 1
+
+
+class CircuitDiscoveryResult(BaseModel):
+    """Complete evidence-grounded result from an executed NeuroQuery investigation."""
+    execution_id: str
+    plan_id: Optional[str] = None
+    question: str
+    intent: IntentType
+    resolved_concepts: list[BiologicalConcept] = Field(default_factory=list)
+    candidate_neurons: list[DiscoveredCandidateNeuron] = Field(default_factory=list)
+    subgraph_nodes: list[CircuitSubgraphNode] = Field(default_factory=list)
+    subgraph_edges: list[CircuitSubgraphEdge] = Field(default_factory=list)
+    structural_metrics: CircuitStructuralMetrics
+    ranking_method: str = "dual_criteria_evidence_and_synaptic_weight"
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+    dataset_version: str = "male-cns:v1.0"
+    catalog_version: str = "1.0.0"
+    source_coverage: str = "Traced-only synaptic connection weights from Janelia MaleCNS v1.0"
+    limitations: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    execution_status: ExecutionStatus
+    execution_duration_ms: float
+    completed_at: str
+    is_partial: bool = False
+    partial_reason: Optional[str] = None
+    existing_tool_handoff: Optional[dict[str, object]] = None
+
+
+class InvestigationExecutionRequest(BaseModel):
+    """Request to execute a validated investigation plan."""
+    plan: Optional[InvestigationPlan] = None
+    plan_id: Optional[str] = None
+    max_candidates: int = Field(default=20, ge=1, le=100)
+    max_subgraph_nodes: int = Field(default=50, ge=2, le=150)
+    max_hops: int = Field(default=1, ge=1, le=2)
+    min_edge_weight: int = Field(default=1, ge=1, le=100)
+
+
+
+class InvestigationExecutionRecord(BaseModel):
+    """Persistent execution record tracking lifecycle and operation logs."""
+    execution_id: str
+    plan_id: Optional[str] = None
+    status: ExecutionStatus
+    question: str
+    intent: IntentType
+    operations_executed: list[str] = Field(default_factory=list)
+    logs: list[str] = Field(default_factory=list)
+    started_at: str
+    completed_at: Optional[str] = None
+    result: Optional[CircuitDiscoveryResult] = None
+    error: Optional[str] = None
+
+
+
 
 

@@ -726,5 +726,118 @@ export interface IntentTaxonomyItem {
   status: string;
 }
 
+// ── V8: NeuroQuery Circuit Discovery Execution Types ─────────────────────────
+
+export type ExecutionStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'partially_completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface DiscoveredCandidateNeuron {
+  body_id: number;
+  cell_type?: string | null;
+  instance?: string | null;
+  superclass?: string | null;
+  subclass?: string | null;
+  consensus_nt?: string | null;
+  matched_concept_ids: string[];
+  matched_mapping_ids: string[];
+  matched_field: string;
+  matched_value: string;
+  evidence_status: string;
+  evidence_tier: string;
+  subgraph_in_degree: number;
+  subgraph_out_degree: number;
+  subgraph_total_weight: number;
+  ranking_score: number;
+  explanation: string;
+}
+
+export interface CircuitSubgraphNode {
+  id: string;
+  body_id: number;
+  cell_type?: string | null;
+  instance?: string | null;
+  superclass?: string | null;
+  consensus_nt?: string | null;
+  is_candidate: boolean;
+  matched_concept_ids: string[];
+  evidence_status?: string | null;
+  degree: number;
+  total_weight: number;
+}
+
+export interface CircuitSubgraphEdge {
+  id: string;
+  source: number;
+  target: number;
+  weight: number;
+  is_inter_candidate: boolean;
+}
+
+export interface CircuitStructuralMetrics {
+  total_nodes: number;
+  total_edges: number;
+  candidate_nodes_count: number;
+  partner_nodes_count: number;
+  density: number;
+  average_weight: number;
+  max_weight: number;
+  top_hub_body_id?: number | null;
+  connected_components: number;
+}
+
+export interface CircuitDiscoveryResult {
+  execution_id: string;
+  plan_id?: string | null;
+  question: string;
+  intent: IntentType;
+  resolved_concepts: BiologicalConcept[];
+  candidate_neurons: DiscoveredCandidateNeuron[];
+  subgraph_nodes: CircuitSubgraphNode[];
+  subgraph_edges: CircuitSubgraphEdge[];
+  structural_metrics: CircuitStructuralMetrics;
+  ranking_method: string;
+  evidence_sources: EvidenceSource[];
+  dataset_version: string;
+  catalog_version: string;
+  source_coverage: string;
+  limitations: string[];
+  warnings: string[];
+  execution_status: ExecutionStatus;
+  execution_duration_ms: number;
+  completed_at: string;
+  is_partial: boolean;
+  partial_reason?: string | null;
+  existing_tool_handoff?: Record<string, unknown> | null;
+}
+
+export interface InvestigationExecutionRequest {
+  plan?: InvestigationPlan | null;
+  plan_id?: string | null;
+  max_candidates?: number;
+  max_subgraph_nodes?: number;
+  max_hops?: number;
+  min_edge_weight?: number;
+}
+
+export interface InvestigationExecutionRecord {
+  execution_id: string;
+  plan_id?: string | null;
+  status: ExecutionStatus;
+  question: string;
+  intent: IntentType;
+  operations_executed: string[];
+  logs: string[];
+  started_at: string;
+  completed_at?: string | null;
+  result?: CircuitDiscoveryResult | null;
+  error?: string | null;
+}
+
+
 
 

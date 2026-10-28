@@ -20,6 +20,7 @@ Instead of inspecting functions and variables, researchers inspect neurons, syna
 - **V5 — Perturbation Lab**: Simulated neural damage, connectivity analysis & network resilience.
 - **V6 — NeuroQuery Foundation & Biological Knowledge Layer**: Versioned concept catalog, authentic scientific citations with direct DOIs, mapping engine, and Knowledge Explorer.
 - **V7 — NeuroQuery Natural-Language Understanding & Structured Investigation Planning**: Dedicated natural-language question interface ("Ask NeuroQuery"), backend LLM provider abstraction (offline deterministic MockLLMProvider and OpenAI-compatible client), intent classification, V6 concept resolution, strict validation, interactive clarification flow, and structured JSON plan export.
+- **V8 — NeuroQuery: Evidence-Grounded Neural Circuit Discovery Engine**: Transforms validated investigation plans into reproducible, inspectable neural circuits using real Janelia MaleCNS v1.0 data. Discovers candidate neurons preserving complete V6 provenance, retrieves actual directed connections from contiguous adjacency indexes, constructs bounded directed subgraphs, computes structural metrics, ranks candidates transparently using dual criteria (evidence tier + synaptic connectivity), and renders interactive Cytoscape graphs with 1-click handoffs to Connectome Explorer, Neuron Inspector, Pathway Tracer, Neural Debugger, and Perturbation Lab.
 
 ---
 
@@ -443,6 +444,53 @@ The **Perturbation Lab** provides a controlled, in-silico environment for resear
   - Baseline vs. perturbed quantitative metrics
   - Complete list of lost node IDs
   - Mandatory scientific qualifications and caveats
+
+---
+
+## Version 8 Features — NeuroQuery Circuit Discovery Engine
+
+The **NeuroQuery Circuit Discovery Engine** closes the loop between natural-language questions and empirical connectome analysis by executing validated V7 investigation plans against the real Janelia MaleCNS v1.0 dataset.
+
+### 1. Controlled Plan Execution Engine
+- Revalidates plans at runtime against an explicit operation allowlist (`op-concept-mapping`, `op-subgraph-expansion`, `op-circuit-ranking`, `op-neuron-profile`, `op-pathway-tracer`, `op-downstream-cascade`, `op-perturbation-simulation`).
+- **No Arbitrary Code Execution**: The LLM suggests investigation plans; the backend strictly enforces typed service execution without executing arbitrary code, shell commands, or unauthorized graph traversals.
+- Tracks execution lifecycle (`queued`, `running`, `completed`, `partially_completed`, `failed`) and maintains persistent execution records accessible via `GET /api/neuroquery/executions/{execution_id}`.
+
+### 2. Evidence-Grounded Candidate Discovery
+- Resolves plan concepts against the V6 Biological Knowledge Catalog (`data/knowledge/`).
+- Queries actual MaleCNS annotation records via the local Feather data provider.
+- Preserves full provenance for each candidate:
+  - Exact body ID and annotation metadata (`type`, `instance`, `superclass`, `consensus_nt`).
+  - Matched concept ID and mapping ID.
+  - Matched field and value.
+  - Evidence tier: Tier 1 (Verified), Tier 2 (Partially Supported), Tier 3 (Requires Review), Tier 4 (Incompatible/Honest Negative).
+  - Supporting peer-reviewed publications with authentic DOIs.
+
+### 3. Bounded Neural Subgraph Construction
+- Retrieves actual presynaptic and postsynaptic connections using pre-indexed contiguous NumPy adjacency slices (`_pre_index`).
+- Strictly enforces graph boundaries (`max_subgraph_nodes`, `min_edge_weight`, `max_hops`) to prevent unbounded graph expansion across 211,577 neurons.
+- Flags partial results if configured node/edge limits truncate subgraph construction.
+- Preserves directed synaptic edge convention: Presynaptic neuron $\to$ Postsynaptic neuron.
+
+### 4. Transparent Dual-Criteria Ranking
+- Combines biological evidence validation with empirical graph topology:
+  - **Evidence Tier Weight**: Verified ($1000$ pts), Partially Supported ($500$ pts), Requires Review ($200$ pts), Incompatible ($0$ pts).
+  - **Synaptic Connectivity**: Synapses between candidates ($+2.0 \times \text{weight}$), direct connections ($+5.0 \times \text{degree}$), external connections ($+0.5 \times \text{weight}$).
+  - Monotonically sorted with deterministic tie-breaking and human-readable explanations.
+
+### 5. Interactive Circuit Discovery Workspace
+- Seamlessly integrated into `AskNeuroQuery.tsx`:
+  - **One-Click Execution**: "Run Investigation (V8)" button enabled when plan is in `ready_for_review` status.
+  - **Interactive Cytoscape Visualizer**: Canvas with bounding limits, pan, zoom, candidate highlights (cyan border), and edge weight tooltips.
+  - **Candidate Neurons Table**: Sortable candidate listings with rank badges, evidence tier, and 1-click Inspector synchronization.
+  - **Structural Metrics Card**: Displays total nodes, directed connections, candidate count, partner count, synapse density, average weight, and top hub neuron.
+  - **Evidence & Provenance Panel**: Shows authentic citations (e.g. Takemura et al. 2017, Schlegel et al. 2024) and dataset coverage notices.
+  - **Tool Handoffs**: Direct navigation to **Connectome Explorer**, **Neuron Inspector**, **Pathway Tracer**, **Neural Debugger**, and **Perturbation Lab**.
+
+### 6. Scientific Limitations & Transparency
+- Results reflect observed anatomical annotations and traced-only synaptic connection weights from Janelia MaleCNS v1.0.
+- Structural connectivity identifies potential anatomical pathways, not physiological spike firing or dynamic neurotransmission.
+- All non-destructive in-silico lesions and perturbations require explicit researcher confirmation before simulation.
 
 ---
 

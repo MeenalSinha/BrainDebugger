@@ -46,10 +46,14 @@ from backend.models import (
     PlanValidationRequest,
     PlanValidationResponse,
     NeuroQueryConfigResponse,
+    CircuitDiscoveryResult,
+    InvestigationExecutionRequest,
+    InvestigationExecutionRecord,
 )
 from backend.perturbation_service import PerturbationService
 from backend.knowledge_service import KnowledgeService
 from backend.query_planner_service import QueryPlannerService
+from backend.circuit_discovery_service import CircuitDiscoveryService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -60,12 +64,13 @@ _service: Optional[ConnectomeService] = None
 _perturbation_service: Optional[PerturbationService] = None
 _knowledge_service: Optional[KnowledgeService] = None
 _planner_service: Optional[QueryPlannerService] = None
+_circuit_discovery_service: Optional[CircuitDiscoveryService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service
+    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -81,6 +86,14 @@ async def lifespan(app: FastAPI):
     _perturbation_service = PerturbationService(_provider)
     _knowledge_service = KnowledgeService(_provider)
     _planner_service = QueryPlannerService(_knowledge_service, _provider, settings)
+    _circuit_discovery_service = CircuitDiscoveryService(
+        knowledge_service=_knowledge_service,
+        data_provider=_provider,
+        connectome_service=_service,
+        perturbation_service=_perturbation_service,
+        query_planner_service=_planner_service,
+        settings=settings,
+    )
     logger.info("BrainDebugger ready.")
     yield
     logger.info("BrainDebugger shutting down.")
@@ -168,6 +181,22 @@ def get_planner_service() -> QueryPlannerService:
 
 
 PlannerDep = Annotated[QueryPlannerService, Depends(get_planner_service)]
+
+
+def get_circuit_discovery_service() -> CircuitDiscoveryService:
+    if _circuit_discovery_service is None or not _provider.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "Circuit discovery service is not loaded or connectome dataset is not ready.",
+            },
+        )
+    return _circuit_discovery_service
+
+
+CircuitDiscoveryDep = Annotated[CircuitDiscoveryService, Depends(get_circuit_discovery_service)]
+
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -821,6 +850,59 @@ async def get_neuroquery_config(
             else f"Live LLM provider '{settings.neuroquery_llm_provider}' configured with model '{settings.neuroquery_llm_model}'."
         ),
     )
+
+
+# ── V8: NeuroQuery Circuit Discovery Execution Endpoints ─────────────────────
+
+@app.post(
+    "/api/neuroquery/execute",
+    response_model=CircuitDiscoveryResult,
+    summary="Execute validated NeuroQuery investigation plan and discover circuit",
+    tags=["NeuroQuery Circuit Discovery"],
+)
+async def execute_investigation_plan(
+    req: InvestigationExecutionRequest,
+    discovery_svc: CircuitDiscoveryDep,
+) -> CircuitDiscoveryResult:
+    """
+    Executes a validated investigation plan against the real Janelia MaleCNS v1.0 connectome.
+    Discovers candidate neurons, extracts bounded directed subgraphs, computes structural metrics,
+    and transparently ranks candidates using dual evidence-grounded criteria.
+    """
+    try:
+        return discovery_svc.execute_plan(req)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "execution_validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Error executing investigation: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "execution_failed", "message": f"Circuit discovery execution error: {exc}"},
+        )
+
+
+@app.get(
+    "/api/neuroquery/executions/{execution_id}",
+    response_model=InvestigationExecutionRecord,
+    summary="Retrieve persistent investigation execution record and logs",
+    tags=["NeuroQuery Circuit Discovery"],
+)
+async def get_investigation_execution(
+    execution_id: str,
+    discovery_svc: CircuitDiscoveryDep,
+) -> InvestigationExecutionRecord:
+    """Retrieves an execution record with real-time lifecycle status and operation logs."""
+    record = discovery_svc.get_execution(execution_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Execution record '{execution_id}' not found."},
+        )
+    return record
+
 
 
 

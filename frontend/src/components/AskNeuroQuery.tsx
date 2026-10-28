@@ -30,6 +30,7 @@ import {
   Compass,
   Cpu,
   Info,
+  Play,
 } from 'lucide-react';
 import { api, ApiClientError } from '../api';
 import type {
@@ -41,13 +42,18 @@ import type {
   NeuroQueryConfigResponse,
   BiologicalConcept,
   EvidenceSource,
+  CircuitDiscoveryResult,
 } from '../types';
+import { CircuitDiscoveryView } from './CircuitDiscoveryView';
 
 interface AskNeuroQueryProps {
   onSelectNeuron?: (bodyId: number) => void;
   onNavigateToKnowledge?: (conceptId?: string) => void;
   onNavigateToExplorer?: (bodyId: number) => void;
+  onNavigateToPathway?: (sourceId?: number, targetId?: number) => void;
+  onNavigateToPerturbation?: (sourceId?: number, targetId?: number) => void;
 }
+
 
 const EXAMPLE_QUESTIONS = [
   {
@@ -88,6 +94,8 @@ export function AskNeuroQuery({
   onSelectNeuron,
   onNavigateToKnowledge,
   onNavigateToExplorer,
+  onNavigateToPathway,
+  onNavigateToPerturbation,
 }: AskNeuroQueryProps) {
   // Input State
   const [question, setQuestion] = useState<string>('');
@@ -100,8 +108,14 @@ export function AskNeuroQuery({
   const [validationReport, setValidationReport] = useState<PlanValidationResponse | null>(null);
   const [validating, setValidating] = useState<boolean>(false);
 
+  // V8 Circuit Discovery Execution State
+  const [executionResult, setExecutionResult] = useState<CircuitDiscoveryResult | null>(null);
+  const [executing, setExecuting] = useState<boolean>(false);
+  const [executionError, setExecutionError] = useState<string | null>(null);
+
   // Provider Config
   const [providerConfig, setProviderConfig] = useState<NeuroQueryConfigResponse | null>(null);
+
 
   // Abort controller ref to cancel stale requests
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -140,6 +154,8 @@ export function AskNeuroQuery({
       setLoading(true);
       setError(null);
       setValidationReport(null);
+      setExecutionResult(null);
+      setExecutionError(null);
 
       try {
         const generated = await api.generateInvestigationPlan(
@@ -217,6 +233,34 @@ export function AskNeuroQuery({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [plan]);
+
+  // Execute Investigation (V8)
+  const handleExecuteInvestigation = useCallback(async () => {
+    if (!plan) return;
+    setExecuting(true);
+    setExecutionError(null);
+    try {
+      const res = await api.executeInvestigationPlan({
+        plan,
+        max_candidates: 25,
+        max_subgraph_nodes: 50,
+        min_edge_weight: 1,
+      });
+      setExecutionResult(res);
+    } catch (err: unknown) {
+      console.error('Investigation execution failed:', err);
+      if (err instanceof ApiClientError) {
+        setExecutionError(`Execution Error (${err.status}): ${err.detail}`);
+      } else if (err instanceof Error) {
+        setExecutionError(err.message);
+      } else {
+        setExecutionError('An unexpected error occurred during circuit discovery execution.');
+      }
+    } finally {
+      setExecuting(false);
+    }
+  }, [plan]);
+
 
   // Helper for Status Badge styling
   const renderSupportStatusBadge = (status: PlanSupportStatus) => {
@@ -517,7 +561,7 @@ export function AskNeuroQuery({
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 {renderSupportStatusBadge(plan.support_status)}
                 <button
                   id="btn-validate-plan"
@@ -530,6 +574,38 @@ export function AskNeuroQuery({
                   <span>{validating ? 'Auditing...' : 'Validate Plan'}</span>
                 </button>
                 <button
+                  id="btn-run-investigation"
+                  className="btn btn-sm btn-primary"
+                  onClick={handleExecuteInvestigation}
+                  disabled={executing || plan.support_status !== 'ready_for_review'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    backgroundColor: plan.support_status === 'ready_for_review' ? '#059669' : undefined,
+                    borderColor: plan.support_status === 'ready_for_review' ? '#047857' : undefined,
+                    color: '#ffffff',
+                    fontWeight: 600,
+                  }}
+                  title={
+                    plan.support_status === 'ready_for_review'
+                      ? 'Execute investigation and discover neural circuit from MaleCNS data'
+                      : 'Investigation plan must be ready for review before execution'
+                  }
+                >
+                  {executing ? (
+                    <>
+                      <RefreshCw size={14} className="spin" />
+                      <span>Executing V8...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={14} />
+                      <span>Run Investigation (V8)</span>
+                    </>
+                  )}
+                </button>
+                <button
                   id="btn-export-plan-json"
                   className="btn btn-sm btn-outline"
                   onClick={handleExportPlan}
@@ -540,6 +616,27 @@ export function AskNeuroQuery({
                 </button>
               </div>
             </div>
+
+            {/* Execution Error Banner (if any) */}
+            {executionError && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: '10px 14px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: 6,
+                  color: '#dc2626',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <XCircle size={16} />
+                <span>{executionError}</span>
+              </div>
+            )}
 
             {/* Natural-Language Interpretation Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
@@ -704,8 +801,22 @@ export function AskNeuroQuery({
             </div>
           )}
 
+          {/* ── V8 Discovered Circuit View (when executed) ────────────────── */}
+          {executionResult && (
+            <CircuitDiscoveryView
+              result={executionResult}
+              onSelectNeuron={onSelectNeuron}
+              onNavigateToKnowledge={onNavigateToKnowledge}
+              onNavigateToExplorer={onNavigateToExplorer}
+              onNavigateToPathway={onNavigateToPathway}
+              onNavigateToPerturbation={onNavigateToPerturbation}
+              onResetExecution={() => setExecutionResult(null)}
+            />
+          )}
+
           {/* ── 5. Planned Operations Table ──────────────────────────────── */}
           <div
+
             className="card"
             style={{
               padding: 16,

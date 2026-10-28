@@ -34,6 +34,9 @@ import type {
   PlanValidationResponse,
   NeuroQueryConfigResponse,
   IntentTaxonomyItem,
+  CircuitDiscoveryResult,
+  InvestigationExecutionRequest,
+  InvestigationExecutionRecord,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -267,6 +270,15 @@ export const api = {
   listNeuroQueryIntents(signal?: AbortSignal): Promise<IntentTaxonomyItem[]> {
     return get<IntentTaxonomyItem[]>('/api/neuroquery/intents', signal);
   },
+
+  executeInvestigationPlan(req: InvestigationExecutionRequest, signal?: AbortSignal): Promise<CircuitDiscoveryResult> {
+    return post<CircuitDiscoveryResult>('/api/neuroquery/execute', req, signal);
+  },
+
+  getInvestigationExecution(executionId: string, signal?: AbortSignal): Promise<InvestigationExecutionRecord> {
+    return get<InvestigationExecutionRecord>(`/api/neuroquery/executions/${encodeURIComponent(executionId)}`, signal);
+  },
 };
+
 
 

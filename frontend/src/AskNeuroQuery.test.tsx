@@ -16,6 +16,8 @@ vi.mock('./api', () => ({
     generateInvestigationPlan: vi.fn(),
     validateInvestigationPlan: vi.fn(),
     listNeuroQueryIntents: vi.fn(),
+    executeInvestigationPlan: vi.fn(),
+    getInvestigationExecution: vi.fn(),
   },
   ApiClientError: class ApiClientError extends Error {
     constructor(public status: number, public detail: string) {
@@ -274,4 +276,100 @@ describe('AskNeuroQuery (V7) Component', () => {
 
     expect(createObjectURL).toHaveBeenCalled();
   });
+
+  it('executes validated plan and renders discovered circuit view with candidate rankings', async () => {
+    const mockResult = {
+      execution_id: 'exec-test-8888',
+      plan_id: 'plan-test-12345',
+      question: 'How does the fly visual system detect directional motion?',
+      intent: 'circuit_discovery' as const,
+      resolved_concepts: mockPlan.resolved_concepts,
+      candidate_neurons: [
+        {
+          body_id: 20001,
+          cell_type: 'T4a',
+          instance: 'T4a_R',
+          superclass: 'visual',
+          consensus_nt: 'acetylcholine',
+          matched_concept_ids: ['visual_motion_detection_t4_t5'],
+          matched_mapping_ids: ['map-motion-t4-t5'],
+          matched_field: 'type',
+          matched_value: 'T4a',
+          evidence_status: 'verified',
+          evidence_tier: 'Tier 1 (Verified)',
+          subgraph_in_degree: 2,
+          subgraph_out_degree: 3,
+          subgraph_total_weight: 45,
+          ranking_score: 1072.5,
+          explanation: 'Rank #1: Tier 1 (Verified) annotation match (type=T4a) with 5 directed connections and 45 synapses.',
+        },
+      ],
+      subgraph_nodes: [
+        {
+          id: '20001',
+          body_id: 20001,
+          cell_type: 'T4a',
+          instance: 'T4a_R',
+          superclass: 'visual',
+          consensus_nt: 'acetylcholine',
+          is_candidate: true,
+          matched_concept_ids: ['visual_motion_detection_t4_t5'],
+          evidence_status: 'verified',
+          degree: 5,
+          total_weight: 45,
+        },
+      ],
+      subgraph_edges: [],
+      structural_metrics: {
+        total_nodes: 1,
+        total_edges: 0,
+        candidate_nodes_count: 1,
+        partner_nodes_count: 0,
+        density: 0.0,
+        average_weight: 0.0,
+        max_weight: 0,
+        top_hub_body_id: 20001,
+        connected_components: 1,
+      },
+      ranking_method: 'dual_criteria_evidence_and_synaptic_weight',
+      evidence_sources: mockPlan.evidence_sources,
+      dataset_version: 'male-cns:v1.0',
+      catalog_version: '1.0.0',
+      source_coverage: 'Traced-only synaptic connection weights from Janelia MaleCNS v1.0',
+      limitations: ['Traced-only synaptic connection weights from Janelia MaleCNS v1.0.'],
+      warnings: [],
+      execution_status: 'completed' as const,
+      execution_duration_ms: 18.5,
+      completed_at: '2026-10-28T00:00:00Z',
+      is_partial: false,
+    };
+
+    vi.mocked(api.executeInvestigationPlan).mockResolvedValue(mockResult);
+
+    render(<AskNeuroQuery />);
+
+    const input = screen.getByPlaceholderText(/How does the fruit fly visual system detect directional motion/i);
+    fireEvent.change(input, { target: { value: 'Motion query' } });
+    fireEvent.click(screen.getByRole('button', { name: /Interpret Question/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('plan-test-12345')).toBeDefined();
+    });
+
+    const runBtn = screen.getByRole('button', { name: /Run Investigation/i });
+    expect(runBtn).toBeDefined();
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(api.executeInvestigationPlan).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Discovered Neural Circuit')).toBeDefined();
+      expect(screen.getByText('exec-test-8888')).toBeDefined();
+      expect(screen.getByText('Transparent Candidate Neuron Rankings')).toBeDefined();
+      expect(screen.getByText('Calculated Structural Graph Metrics')).toBeDefined();
+    });
+  });
 });
+

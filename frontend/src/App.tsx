@@ -405,6 +405,15 @@ export default function App() {
                   setSelectedBodyId(bodyId);
                   setWorkspace('explorer');
                 }}
+                onNavigateToPathway={(src, tgt) => {
+                  if (src) setPathwaySourceId(src);
+                  if (tgt) setPathwayTargetId(tgt);
+                  setWorkspace('pathway');
+                }}
+                onNavigateToPerturbation={(src) => {
+                  if (src) setPathwaySourceId(src);
+                  setWorkspace('perturbation');
+                }}
               />
             </section>
 

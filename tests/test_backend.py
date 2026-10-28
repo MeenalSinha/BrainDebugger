@@ -1570,6 +1570,322 @@ class TestV7NeuroQueryPlanner:
         assert "failing_test" in plan.explanation
 
 
+# ── V8: NeuroQuery Circuit Discovery Execution Engine Tests ─────────────────
+
+class TestV8CircuitDiscoveryEngine:
+    """Tests investigation plan execution, candidate discovery, subgraph construction, ranking, and tool handoff."""
+
+    def _make_mock_provider(self):
+        import numpy as np
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        p = LocalFeatherProvider(Path("data"))
+        df_ann = pd.DataFrame([
+            {"bodyId": 10001, "body_id": 10001, "type": "DNp01", "instance": "DNp01_R", "superclass": "descending", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 10002, "body_id": 10002, "type": "GF", "instance": "GF_L", "superclass": "descending", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 800146, "body_id": 800146, "type": "TTMn", "instance": "TTMn_R", "superclass": "motor", "status": "Traced", "consensus_nt": "glutamate"},
+            {"bodyId": 20001, "body_id": 20001, "type": "T4a", "instance": "T4a_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 20002, "body_id": 20002, "type": "T5a", "instance": "T5a_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 30001, "body_id": 30001, "type": "Mi1", "instance": "Mi1_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+        ])
+        p._annotations = df_ann.set_index("bodyId", drop=False)
+
+        # Mock synaptic weights
+        df_weights = pd.DataFrame([
+            {"body_pre": 20001, "body_post": 20002, "weight": 15, "type_pre": "T4a", "type_post": "T5a"},
+            {"body_pre": 20002, "body_post": 20001, "weight": 8, "type_pre": "T5a", "type_post": "T4a"},
+            {"body_pre": 30001, "body_post": 20001, "weight": 25, "type_pre": "Mi1", "type_post": "T4a"},
+            {"body_pre": 10001, "body_post": 800146, "weight": 70, "type_pre": "DNp01", "type_post": "TTMn"},
+        ]).sort_values("body_pre").reset_index(drop=True)
+        p._weights = df_weights
+        p._loaded = True
+        p._index_graph()
+        return p
+
+    def _make_services(self):
+        from backend.config import Settings
+        from backend.knowledge_service import KnowledgeService
+        from backend.service import ConnectomeService
+        from backend.perturbation_service import PerturbationService
+        from backend.query_planner_service import QueryPlannerService
+        from backend.circuit_discovery_service import CircuitDiscoveryService
+
+        provider = self._make_mock_provider()
+        settings = Settings()
+        ks = KnowledgeService(provider, knowledge_dir="data/knowledge")
+        cs = ConnectomeService(provider, settings)
+        ps = PerturbationService(provider)
+        planner = QueryPlannerService(ks, provider, settings)
+        cds = CircuitDiscoveryService(
+            knowledge_service=ks,
+            data_provider=provider,
+            connectome_service=cs,
+            perturbation_service=ps,
+            query_planner_service=planner,
+            settings=settings,
+        )
+        return cds, planner
+
+    def test_circuit_discovery_execution_motion_detection(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlannedOperation,
+            PlanSupportStatus,
+        )
+        cds, planner = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-motion-test",
+            original_question="How does the fly visual system detect directional motion?",
+            normalized_question="How does directional motion detection work?",
+            intent=IntentType.circuit_discovery,
+            concept_ids=["visual_motion_detection_t4_t5"],
+            investigation_id="inv-circuit-discovery",
+            support_status=PlanSupportStatus.ready_for_review,
+            planned_operations=[
+                PlannedOperation(
+                    operation_id="op-1",
+                    tool_name="KnowledgeService.get_candidates_for_concept",
+                    description="Resolve candidate neurons",
+                    parameters={"concept_ids": ["visual_motion_detection_t4_t5"]},
+                    prerequisites=[],
+                    is_v8_execution=False,
+                )
+            ],
+            explanation="Visual motion circuit plan",
+            created_at="2026-10-28T00:00:00Z",
+        )
+
+        req = InvestigationExecutionRequest(plan=plan, max_candidates=10, max_subgraph_nodes=20, min_edge_weight=1)
+        result = cds.execute_plan(req)
+
+        assert result.execution_id.startswith("exec-")
+        assert result.execution_status == ExecutionStatus.completed
+        assert result.intent == IntentType.circuit_discovery
+        assert len(result.candidate_neurons) >= 2
+        cand_bids = [c.body_id for c in result.candidate_neurons]
+        assert 20001 in cand_bids
+        assert 20002 in cand_bids
+
+        # Verify candidate ranking
+        top_cand = result.candidate_neurons[0]
+        assert top_cand.evidence_tier == "Tier 1 (Verified)"
+        assert top_cand.ranking_score > 0
+        assert "Rank #1" in top_cand.explanation
+
+        # Verify bounded subgraph
+        assert len(result.subgraph_nodes) >= 2
+        assert len(result.subgraph_edges) >= 1
+        assert any(e.source == 20001 and e.target == 20002 for e in result.subgraph_edges)
+
+        # Verify structural metrics
+        metrics = result.structural_metrics
+        assert metrics.total_nodes >= 2
+        assert metrics.total_edges >= 1
+        assert metrics.average_weight > 0
+        assert metrics.connected_components >= 1
+
+        # Verify scientific limitations and sources attached
+        assert len(result.limitations) >= 3
+        assert any("Traced-only" in lim for lim in result.limitations)
+        assert len(result.evidence_sources) >= 1
+
+    def test_rejection_of_invalid_plan(self):
+        from backend.models import (
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        import pytest
+        cds, _ = self._make_services()
+
+        # Plan with corrupted concept
+        bad_plan = InvestigationPlan(
+            plan_id="plan-bad",
+            original_question="Invalid question",
+            normalized_question="Invalid question",
+            intent=IntentType.circuit_discovery,
+            concept_ids=["nonexistent_concept_xyz"],
+            support_status=PlanSupportStatus.validation_failed,
+            explanation="Invalid",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        with pytest.raises(ValueError, match="Plan validation failed"):
+            cds.execute_plan(InvestigationExecutionRequest(plan=bad_plan))
+
+    def test_subgraph_bounding_and_partial_flag(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-partial-test",
+            original_question="Motion detection",
+            normalized_question="Motion detection",
+            intent=IntentType.circuit_discovery,
+            concept_ids=["visual_motion_detection_t4_t5"],
+            investigation_id="inv-circuit-discovery",
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Partial test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+
+        # Limit to 2 nodes total (candidate count is 2, so partner 30001 cannot fit)
+        req = InvestigationExecutionRequest(plan=plan, max_candidates=2, max_subgraph_nodes=2, min_edge_weight=1)
+        result = cds.execute_plan(req)
+
+        assert result.is_partial is True
+        assert result.execution_status == ExecutionStatus.partially_completed
+        assert "Subgraph bounded to top 2 nodes" in (result.partial_reason or "")
+        assert len(result.subgraph_nodes) == 2
+
+    def test_existing_tool_integration_neuron_inspector(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-inspect-test",
+            original_question="Inspect neuron 10001",
+            normalized_question="Inspect neuron 10001",
+            intent=IntentType.inspect_neuron,
+            requested_entities={"body_id": 10001},
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Inspection test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+        assert res.execution_status == ExecutionStatus.completed
+        assert res.existing_tool_handoff is not None
+        assert res.existing_tool_handoff["tool"] == "inspector"
+        assert res.existing_tool_handoff["body_id"] == 10001
+
+    def test_existing_tool_integration_pathway_tracer(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-pathway-test",
+            original_question="Find path from 10001 to 800146",
+            normalized_question="Find path from 10001 to 800146",
+            intent=IntentType.structural_pathway_search,
+            requested_entities={"source_id": 10001, "target_id": 800146},
+            parameters={"max_hops": 2},
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Pathway test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+        assert res.execution_status == ExecutionStatus.completed
+        assert res.existing_tool_handoff is not None
+        assert res.existing_tool_handoff["tool"] == "pathway_tracer"
+        assert res.existing_tool_handoff["source_id"] == 10001
+        assert res.existing_tool_handoff["target_id"] == 800146
+        assert len(res.subgraph_nodes) >= 2
+        assert len(res.subgraph_edges) >= 1
+
+    def test_existing_tool_integration_perturbation_lab(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-lesion-test",
+            original_question="What happens if we disable giant fiber neuron 10001?",
+            normalized_question="Disable neuron 10001",
+            intent=IntentType.structural_intervention_analysis,
+            requested_entities={"target_entities": [10001]},
+            parameters={"intervention_type": "node_knockout"},
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Lesion test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+        assert res.execution_status == ExecutionStatus.completed
+        assert res.existing_tool_handoff is not None
+        assert res.existing_tool_handoff["tool"] == "perturbation_lab"
+        assert res.existing_tool_handoff["requires_confirmation"] is True
+
+    def test_general_question_no_fabricated_graph(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-general-test",
+            original_question="What is the connectome?",
+            normalized_question="What is the connectome?",
+            intent=IntentType.general_question,
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="A connectome is a comprehensive map of neural connections.",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+        assert res.execution_status == ExecutionStatus.completed
+        assert len(res.subgraph_nodes) == 0
+        assert len(res.subgraph_edges) == 0
+        assert len(res.candidate_neurons) == 0
+
+    def test_execution_record_tracking(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-record-test",
+            original_question="Inspect neuron 10001",
+            normalized_question="Inspect neuron 10001",
+            intent=IntentType.inspect_neuron,
+            requested_entities={"body_id": 10001},
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Record test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+        record = cds.get_execution(res.execution_id)
+        assert record is not None
+        assert record.execution_id == res.execution_id
+        assert record.status == ExecutionStatus.completed
+        assert len(record.logs) >= 2
+        assert len(record.operations_executed) >= 1
+
+
+
 
 
 
