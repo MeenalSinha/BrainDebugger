@@ -41,6 +41,9 @@ import type {
   CircuitSubgraphExpansionResponse,
   CircuitComparisonRequest,
   CircuitComparisonResult,
+  RankingProfile,
+  RobustnessAnalysisRequest,
+  RobustnessAnalysisResponse,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -289,6 +292,18 @@ export const api = {
 
   compareCircuitInvestigations(req: CircuitComparisonRequest, signal?: AbortSignal): Promise<CircuitComparisonResult> {
     return post<CircuitComparisonResult>('/api/neuroquery/compare', req, signal);
+  },
+
+  getRobustnessProfiles(signal?: AbortSignal): Promise<RankingProfile[]> {
+    return get<RankingProfile[]>('/api/neuroquery/robustness/profiles', signal);
+  },
+
+  analyzeCircuitRobustness(req: RobustnessAnalysisRequest, signal?: AbortSignal): Promise<RobustnessAnalysisResponse> {
+    return post<RobustnessAnalysisResponse>('/api/neuroquery/robustness/analyze', req, signal);
+  },
+
+  getRobustnessAnalysis(analysisId: string, signal?: AbortSignal): Promise<RobustnessAnalysisResponse> {
+    return get<RobustnessAnalysisResponse>(`/api/neuroquery/robustness/${encodeURIComponent(analysisId)}`, signal);
   },
 };
 

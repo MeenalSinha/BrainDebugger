@@ -2180,6 +2180,244 @@ class TestV8CircuitDiscoveryEngine:
         assert "800146_10001" in comp_rev.graph_comparison.unique_b_edge_ids
 
 
+# ── V10: Circuit Robustness & Sensitivity Analysis Lab Tests ────────────────
+
+class TestV10RobustnessAnalysis:
+    """Unit tests for Version 10 scenario generation, stability calculations, and API contracts."""
+
+    def _make_mock_provider(self):
+        from pathlib import Path
+        import numpy as np
+        import pandas as pd
+        from backend.data_provider import LocalFeatherProvider
+        p = LocalFeatherProvider(Path("data"))
+        p.dataset_version = "male-cns:v1.0"
+        p._loaded = True
+
+        df_ann = pd.DataFrame([
+            {"bodyId": 10001, "body_id": 10001, "type": "DNp01", "instance": "DNp01_R", "superclass": "descending", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 800146, "body_id": 800146, "type": "TTMn", "instance": "TTMn_R", "superclass": "motor", "status": "Traced", "consensus_nt": "glutamate"},
+            {"bodyId": 20001, "body_id": 20001, "type": "T4a", "instance": "T4a_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 20002, "body_id": 20002, "type": "T5a", "instance": "T5a_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 30001, "body_id": 30001, "type": "Mi1", "instance": "Mi1_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+        ])
+        p._annotations = df_ann.set_index("bodyId", drop=False)
+
+        df_weights = pd.DataFrame([
+            {"body_pre": 20001, "body_post": 20002, "weight": 15, "type_pre": "T4a", "type_post": "T5a"},
+            {"body_pre": 20002, "body_post": 20001, "weight": 8, "type_pre": "T5a", "type_post": "T4a"},
+            {"body_pre": 30001, "body_post": 20001, "weight": 25, "type_pre": "Mi1", "type_post": "T4a"},
+            {"body_pre": 10001, "body_post": 800146, "weight": 70, "type_pre": "DNp01", "type_post": "TTMn"},
+        ]).sort_values("body_pre").reset_index(drop=True)
+        p._weights = df_weights
+        p._nt = pd.DataFrame()
+        p._index_graph()
+        return p
+
+    def _make_services(self):
+        from backend.config import Settings
+        from backend.circuit_discovery_service import CircuitDiscoveryService
+        from backend.knowledge_service import KnowledgeService
+        from backend.llm_provider import MockLLMProvider
+        from backend.query_planner_service import QueryPlannerService
+        from backend.robustness_analysis_service import RobustnessAnalysisService
+        from backend.service import ConnectomeService
+
+        p = self._make_mock_provider()
+        ks = KnowledgeService(p, knowledge_dir="data/knowledge")
+        cs = ConnectomeService(p, Settings())
+        planner = QueryPlannerService(ks, p, Settings(), llm_provider=MockLLMProvider())
+        cds = CircuitDiscoveryService(
+            knowledge_service=ks,
+            data_provider=p,
+            connectome_service=cs,
+            query_planner_service=planner,
+            settings=Settings(),
+        )
+        ras = RobustnessAnalysisService(
+            circuit_discovery_service=cds,
+            knowledge_service=ks,
+            data_provider=p,
+            query_planner_service=planner,
+            settings=Settings(),
+        )
+        return p, ks, cds, ras, planner
+
+    def test_scenario_generation_one_factor_at_a_time(self):
+        from backend.models import RobustnessAnalysisRequest
+        _, _, _, ras, _ = self._make_services()
+
+        req = RobustnessAnalysisRequest(
+            mode="one_factor_at_a_time",
+            min_edge_weights=[1, 5, 10],
+            max_subgraph_nodes_list=[20, 40],
+            max_candidates_list=[10, 20],
+        )
+        baseline_params = {"min_edge_weight": 1, "max_subgraph_nodes": 40, "max_candidates": 20}
+        scenarios = ras.generate_scenarios(baseline_params, req)
+
+        assert len(scenarios) >= 4
+        # First scenario must be baseline
+        assert scenarios[0].is_baseline is True
+        assert scenarios[0].min_edge_weight == 1
+        assert scenarios[0].max_subgraph_nodes == 40
+        assert scenarios[0].max_candidates == 20
+
+        # Non-baseline scenarios vary exactly one factor
+        weight_scenarios = [s for s in scenarios if s.min_edge_weight in (5, 10)]
+        assert len(weight_scenarios) == 2
+        for ws in weight_scenarios:
+            assert ws.max_subgraph_nodes == 40
+            assert ws.max_candidates == 20
+
+    def test_scenario_generation_budget_limit(self):
+        import pytest
+        from backend.models import RobustnessAnalysisRequest
+        _, _, _, ras, _ = self._make_services()
+
+        # Grid with excessive combinations (> 25)
+        req = RobustnessAnalysisRequest(
+            mode="grid",
+            min_edge_weights=[1, 2, 5, 10],
+            max_subgraph_nodes_list=[20, 30, 40],
+            max_candidates_list=[5, 10, 20],
+        )
+        baseline_params = {"min_edge_weight": 1, "max_subgraph_nodes": 40, "max_candidates": 20}
+        # 4 * 3 * 3 = 36 > 25 -> ValueError
+        with pytest.raises(ValueError, match="exceeding analysis budget"):
+            ras.generate_scenarios(baseline_params, req)
+
+    def test_candidate_stability_calculation(self):
+        from backend.models import DiscoveredCandidateNeuron
+        _, _, _, ras, _ = self._make_services()
+
+        cand_a = DiscoveredCandidateNeuron(
+            body_id=10001, cell_type="DNp01", matched_concept_ids=["c1"],
+            matched_mapping_id="m1", matched_field="type", matched_value="DNp01",
+            evidence_status="verified", evidence_tier="Tier 1 (Verified)",
+            ranking_score=1000.0,
+        )
+        cand_b = DiscoveredCandidateNeuron(
+            body_id=800146, cell_type="TTMn", matched_concept_ids=["c1"],
+            matched_mapping_id="m2", matched_field="type", matched_value="TTMn",
+            evidence_status="verified", evidence_tier="Tier 2 (Partially Supported)",
+            ranking_score=500.0,
+        )
+
+        scenario_candidates_map = {
+            "scenario-baseline": [cand_a, cand_b],
+            "scenario-weight-5": [cand_a, cand_b],
+            "scenario-weight-10": [cand_a],  # cand_b dropped in strict scenario
+        }
+        successful_scenario_ids = ["scenario-baseline", "scenario-weight-5", "scenario-weight-10"]
+
+        stability = ras._compute_candidate_stability(
+            scenario_candidates_map,
+            successful_scenario_ids,
+            baseline_id="scenario-baseline",
+            top_k_cutoff=5,
+        )
+
+        assert len(stability) == 2
+        # cand_a appeared in all 3 scenarios: inclusion_fraction = 1.0
+        item_a = next(i for i in stability if i.body_id == 10001)
+        assert item_a.inclusion_count == 3
+        assert item_a.total_scenarios == 3
+        assert item_a.inclusion_fraction == 1.0
+        assert item_a.in_baseline is True
+        assert item_a.baseline_rank == 1
+        assert item_a.median_rank == 1.0
+        assert item_a.rank_spread == 0
+        assert item_a.top_k_retained is True
+
+        # cand_b appeared in 2 of 3 scenarios: inclusion_fraction = 2/3 = 0.6667
+        item_b = next(i for i in stability if i.body_id == 800146)
+        assert item_b.inclusion_count == 2
+        assert item_b.total_scenarios == 3
+        assert item_b.inclusion_fraction == 0.6667
+        assert item_b.in_baseline is True
+        assert item_b.baseline_rank == 2
+
+    def test_directed_edge_stability_direction_sensitive(self):
+        from backend.models import CircuitSubgraphEdge
+        _, _, _, ras, _ = self._make_services()
+
+        # Edge u -> v (10001 -> 800146)
+        e1 = CircuitSubgraphEdge(id="10001_800146", source=10001, target=800146, weight=70)
+        # Reverse edge v -> u (800146 -> 10001)
+        e_rev = CircuitSubgraphEdge(id="800146_10001", source=800146, target=10001, weight=12)
+
+        scenario_edges_map = {
+            "scenario-baseline": [e1],
+            "scenario-weight-5": [e1, e_rev],
+            "scenario-weight-10": [e1],
+        }
+        successful_scenario_ids = ["scenario-baseline", "scenario-weight-5", "scenario-weight-10"]
+
+        edge_stability = ras._compute_edge_stability(
+            scenario_edges_map,
+            successful_scenario_ids,
+            baseline_id="scenario-baseline",
+        )
+
+        assert len(edge_stability) == 2
+        edge_10001_800146 = next(e for e in edge_stability if e.edge_id == "10001_800146")
+        edge_800146_10001 = next(e for e in edge_stability if e.edge_id == "800146_10001")
+
+        # Direction-sensitive: edge 10001 -> 800146 appears in 3/3 = 1.0
+        assert edge_10001_800146.inclusion_count == 3
+        assert edge_10001_800146.inclusion_fraction == 1.0
+        assert edge_10001_800146.in_baseline is True
+        assert edge_10001_800146.survives_strict_threshold is True  # wt=70 >= 10
+
+        # Reverse edge appears only in 1/3 = 0.3333, and was NOT in baseline
+        assert edge_800146_10001.inclusion_count == 1
+        assert edge_800146_10001.inclusion_fraction == 0.3333
+        assert edge_800146_10001.in_baseline is False
+
+    @pytest.mark.asyncio
+    async def test_full_robustness_analysis_execution(self):
+        from backend.models import InvestigationExecutionRequest, PlanGenerationRequest, RobustnessAnalysisRequest
+        _, _, cds, ras, planner = self._make_services()
+
+        # Step 1: Generate & execute baseline plan
+        plan = await planner.generate_plan(PlanGenerationRequest(question="How does the visual motion system connect?"))
+        exec_res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+
+        # Step 2: Run robustness analysis on completed execution
+        req = RobustnessAnalysisRequest(
+            execution_id=exec_res.execution_id,
+            mode="one_factor_at_a_time",
+            min_edge_weights=[1, 5],
+            max_subgraph_nodes_list=[20, 40],
+        )
+        res = ras.execute_robustness_analysis(req)
+
+        assert res.analysis_id.startswith("robustness-")
+        assert res.manifest.manifest_version == "1.0.0"
+        assert res.manifest.baseline_plan_id == plan.plan_id
+        assert len(res.scenarios) >= 3
+        assert len(res.metric_sensitivity) >= 3
+
+        # Baseline summary check
+        assert res.baseline_summary.is_baseline is True
+        assert res.baseline_summary.status == "completed"
+
+        # Stability summary indicators
+        assert res.stability_summary["requested_scenarios"] >= 3
+        assert res.stability_summary["completed_scenarios"] >= 3
+        assert res.stability_summary["failed_scenarios"] == 0
+
+        # Manifest reproducibility checks
+        assert res.manifest.dataset_version == "male-cns:v1.0"
+        assert len(res.manifest.scientific_limitations) >= 3
+
+        # Retrieval by analysis_id
+        retrieved = ras.get_analysis(res.analysis_id)
+        assert retrieved is not None
+        assert retrieved.analysis_id == res.analysis_id
+
+
 
 
 

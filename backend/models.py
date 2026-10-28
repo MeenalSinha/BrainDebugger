@@ -9,7 +9,7 @@ the real dataset and must NOT be substituted with invented values.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -996,7 +996,147 @@ class CircuitComparisonResult(BaseModel):
     compatibility_warnings: list[str] = Field(default_factory=list)
 
 
+# ── V10: Circuit Robustness & Sensitivity Analysis Lab Models ───────────────
+
+class RankingProfile(BaseModel):
+    """Candidate neuron ranking profile specifying score multipliers."""
+    profile_name: str
+    tier_weight_mult: float = 1.0
+    synaptic_weight_mult: float = 0.5
+    degree_mult: float = 10.0
+    description: Optional[str] = None
 
 
+class RobustnessScenarioDefinition(BaseModel):
+    """Configuration for an individual robustness evaluation scenario."""
+    scenario_id: str
+    is_baseline: bool = False
+    parameter_label: str
+    min_edge_weight: int
+    max_subgraph_nodes: int
+    max_candidates: int
+    ranking_profile: RankingProfile
 
 
+class CandidateStabilityItem(BaseModel):
+    """Stability statistics for a candidate neuron across evaluated scenarios."""
+    body_id: int
+    cell_type: Optional[str] = None
+    instance: Optional[str] = None
+    evidence_tier: str
+    baseline_rank: Optional[int] = None
+    median_rank: float
+    min_rank: int
+    max_rank: int
+    rank_spread: int
+    inclusion_count: int
+    total_scenarios: int
+    inclusion_fraction: float
+    in_baseline: bool
+    top_k_retained: bool
+    observed_ranks: dict[str, int] = Field(default_factory=dict)
+
+
+class EdgeStabilityItem(BaseModel):
+    """Stability metrics for a directed synaptic connection across evaluated scenarios."""
+    edge_id: str
+    source: int
+    target: int
+    weight: int
+    inclusion_count: int
+    total_scenarios: int
+    inclusion_fraction: float
+    in_baseline: bool
+    survives_strict_threshold: bool = False
+
+
+class MetricSensitivityItem(BaseModel):
+    """Sensitivity of graph-level structural metrics under a specific parameter setting."""
+    scenario_id: str
+    parameter_label: str
+    min_edge_weight: int
+    max_subgraph_nodes: int
+    max_candidates: int
+    ranking_profile_name: str
+    node_count: int
+    edge_count: int
+    candidate_count: int
+    density: float
+    average_weight: float
+    delta_nodes: int
+    delta_edges: int
+    execution_duration_ms: float
+    status: str = "completed"
+
+
+class RobustnessScenarioSummary(BaseModel):
+    """Summary of execution and topology for a single robustness scenario."""
+    scenario_id: str
+    is_baseline: bool = False
+    parameter_label: str
+    min_edge_weight: int
+    max_subgraph_nodes: int
+    max_candidates: int
+    ranking_profile: RankingProfile
+    candidate_count: int
+    node_count: int
+    edge_count: int
+    density: float = 0.0
+    average_weight: float = 0.0
+    status: str = "completed"
+    execution_duration_ms: float = 0.0
+    top_candidate_ids: list[int] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class RobustnessManifest(BaseModel):
+    """Reproducibility manifest recording parameters, source metadata, and execution bounds."""
+    manifest_version: str = "1.0.0"
+    schema_version: str = "1.0.0"
+    analysis_id: str
+    baseline_execution_id: str
+    baseline_plan_id: str
+    research_question: str
+    dataset_version: str
+    dataset_fingerprint: Optional[str] = None
+    catalog_version: str
+    ranking_formula_version: str = "v10.0"
+    scenario_strategy: str
+    strategy: Optional[str] = None
+    parameter_grid: list[str] = Field(default_factory=list)
+    requested_scenarios: int
+    completed_scenarios: int
+    failed_scenarios: int
+    created_at: str
+    execution_duration_total_ms: float
+    scientific_limitations: list[str] = Field(default_factory=list)
+
+
+class RobustnessAnalysisRequest(BaseModel):
+    """Request to initiate a circuit robustness and sensitivity analysis."""
+    execution_id: Optional[str] = None
+    baseline_execution_id: Optional[str] = None
+    plan_id: Optional[str] = None
+    mode: str = "one_factor_at_a_time"  # "one_factor_at_a_time" | "grid"
+    strategy: Optional[str] = None      # Alias for mode ("one_factor", "one_factor_at_a_time", "grid")
+    min_edge_weights: Optional[list[int]] = None
+    max_subgraph_nodes_list: Optional[list[int]] = None
+    max_candidates_list: Optional[list[int]] = None
+    ranking_profiles: Optional[list[RankingProfile]] = None
+    ranking_profile_names: Optional[list[str]] = None
+    top_k_cutoff: int = 5
+    baseline_overrides: Optional[dict[str, Any]] = None
+
+
+class RobustnessAnalysisResponse(BaseModel):
+    """Complete results of a circuit robustness and sensitivity analysis."""
+    analysis_id: str
+    baseline_execution_id: str
+    baseline_summary: RobustnessScenarioSummary
+    scenarios: list[RobustnessScenarioSummary] = Field(default_factory=list)
+    candidate_stability: list[CandidateStabilityItem] = Field(default_factory=list)
+    edge_stability: list[EdgeStabilityItem] = Field(default_factory=list)
+    metric_sensitivity: list[MetricSensitivityItem] = Field(default_factory=list)
+    manifest: RobustnessManifest
+    stability_summary: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)

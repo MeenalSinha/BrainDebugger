@@ -957,3 +957,154 @@ export interface SavedInvestigationRecord {
   name: string;
   result: CircuitDiscoveryResult;
 }
+
+// ── V10: Circuit Robustness & Sensitivity Analysis Lab Types ───────────────
+
+export interface RankingProfile {
+  profile_name: string;
+  tier_weight_mult: number;
+  synaptic_weight_mult: number;
+  degree_mult: number;
+  description?: string | null;
+}
+
+export interface RobustnessScenarioDefinition {
+  scenario_id: string;
+  is_baseline: boolean;
+  parameter_label: string;
+  min_edge_weight: number;
+  max_subgraph_nodes: number;
+  max_candidates: number;
+  ranking_profile: RankingProfile;
+}
+
+export interface CandidateStabilityItem {
+  body_id: number;
+  cell_type?: string | null;
+  instance?: string | null;
+  evidence_tier: string;
+  baseline_rank?: number | null;
+  median_rank: number;
+  min_rank: number;
+  max_rank: number;
+  rank_spread: number;
+  inclusion_count: number;
+  total_scenarios: number;
+  inclusion_fraction: number;
+  in_baseline: boolean;
+  top_k_retained: boolean;
+  observed_ranks: Record<string, number>;
+}
+
+export interface EdgeStabilityItem {
+  edge_id: string;
+  source: number;
+  target: number;
+  weight: number;
+  inclusion_count: number;
+  total_scenarios: number;
+  inclusion_fraction: number;
+  in_baseline: boolean;
+  survives_strict_threshold: boolean;
+}
+
+export interface MetricSensitivityItem {
+  scenario_id: string;
+  parameter_label: string;
+  min_edge_weight: number;
+  max_subgraph_nodes: number;
+  max_candidates: number;
+  ranking_profile_name: string;
+  node_count: number;
+  edge_count: number;
+  candidate_count: number;
+  density: number;
+  average_weight: number;
+  delta_nodes: number;
+  delta_edges: number;
+  execution_duration_ms: number;
+  status: string;
+}
+
+export interface RobustnessScenarioSummary {
+  scenario_id: string;
+  is_baseline: boolean;
+  parameter_label: string;
+  min_edge_weight: number;
+  max_subgraph_nodes: number;
+  max_candidates: number;
+  ranking_profile: RankingProfile;
+  candidate_count: number;
+  node_count: number;
+  edge_count: number;
+  density: number;
+  average_weight: number;
+  status: string;
+  execution_duration_ms: number;
+  top_candidate_ids: number[];
+  error?: string | null;
+}
+
+export interface RobustnessManifest {
+  manifest_version: string;
+  analysis_id: string;
+  baseline_execution_id: string;
+  baseline_plan_id: string;
+  research_question: string;
+  dataset_version: string;
+  dataset_fingerprint?: string | null;
+  catalog_version: string;
+  ranking_formula_version: string;
+  scenario_strategy: string;
+  requested_scenarios: number;
+  completed_scenarios: number;
+  failed_scenarios: number;
+  created_at: string;
+  execution_duration_total_ms: number;
+  scientific_limitations: string[];
+}
+
+export interface RobustnessAnalysisRequest {
+  execution_id?: string | null;
+  plan_id?: string | null;
+  mode?: string;
+  min_edge_weights?: number[] | null;
+  max_subgraph_nodes_list?: number[] | null;
+  max_candidates_list?: number[] | null;
+  ranking_profiles?: RankingProfile[] | null;
+  top_k_cutoff?: number;
+  baseline_overrides?: Record<string, any> | null;
+}
+
+export interface RobustnessAnalysisResponse {
+  analysis_id: string;
+  baseline_execution_id: string;
+  baseline_summary: RobustnessScenarioSummary;
+  scenarios: RobustnessScenarioSummary[];
+  candidate_stability: CandidateStabilityItem[];
+  edge_stability: EdgeStabilityItem[];
+  metric_sensitivity: MetricSensitivityItem[];
+  manifest: RobustnessManifest;
+  stability_summary: {
+    requested_scenarios: number;
+    completed_scenarios: number;
+    failed_scenarios: number;
+    evaluated_candidate_count: number;
+    stable_candidate_count: number;
+    top_k_retained_count: number;
+    evaluated_edge_count: number;
+    stable_edge_count: number;
+    top_k_cutoff: number;
+    stability_threshold_pct: number;
+    [key: string]: any;
+  };
+  warnings: string[];
+}
+
+export interface SavedRobustnessAnalysisRecord {
+  id: string;
+  saved_at: string;
+  schema_version: string;
+  name: string;
+  response: RobustnessAnalysisResponse;
+}

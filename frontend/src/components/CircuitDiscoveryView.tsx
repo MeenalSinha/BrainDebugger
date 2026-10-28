@@ -55,6 +55,7 @@ import type {
   SavedInvestigationRecord,
 } from '../types';
 import { api } from '../api';
+import { RobustnessLab } from './RobustnessLab';
 
 const SAVED_INVESTIGATIONS_KEY = 'braindebugger_saved_investigations_v9';
 
@@ -81,7 +82,7 @@ export function CircuitDiscoveryView({
   const cyRef = useRef<cytoscape.Core | null>(null);
 
   // ── Tab Navigation ────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'explorer' | 'narrative' | 'compare'>('explorer');
+  const [activeTab, setActiveTab] = useState<'explorer' | 'narrative' | 'compare' | 'robustness'>('explorer');
 
   // ── Graph State & Dynamic Expansions ──────────────────────────────────────
   const [dynamicNodes, setDynamicNodes] = useState<CircuitSubgraphNode[]>(result.subgraph_nodes);
@@ -778,10 +779,30 @@ export function CircuitDiscoveryView({
             <GitCompare size={13} />
             <span>Compare Investigations</span>
           </button>
+          <button
+            id="tab-robustness-lab"
+            className={`btn btn-xs ${activeTab === 'robustness' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('robustness')}
+            style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          >
+            <Sliders size={13} />
+            <span>Robustness Lab (V10)</span>
+          </button>
         </div>
 
         {/* Global Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            id="btn-analyze-robustness-quick"
+            className="btn btn-sm btn-outline"
+            onClick={() => setActiveTab('robustness')}
+            title="Evaluate circuit robustness across systematic parameter sweeps"
+            style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+          >
+            <Sliders size={14} />
+            <span>Analyze Robustness</span>
+          </button>
+
           <button
             id="btn-save-investigation-quick"
             className="btn btn-sm btn-outline"
@@ -2110,6 +2131,15 @@ export function CircuitDiscoveryView({
             )}
           </div>
         </div>
+      )}
+
+      {/* ── TAB 4: ROBUSTNESS LAB (V10) ─────────────────────────────────── */}
+      {activeTab === 'robustness' && (
+        <RobustnessLab
+          baselineResult={result}
+          onSelectNeuron={onSelectNeuron}
+          onReturnToExplorer={() => setActiveTab('explorer')}
+        />
       )}
 
       {/* ── 4. Scientific Limitations & Boundaries Notice ─────────────────── */}

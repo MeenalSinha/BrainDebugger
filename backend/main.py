@@ -53,11 +53,15 @@ from backend.models import (
     CircuitSubgraphExpansionResponse,
     CircuitComparisonRequest,
     CircuitComparisonResult,
+    RankingProfile,
+    RobustnessAnalysisRequest,
+    RobustnessAnalysisResponse,
 )
 from backend.perturbation_service import PerturbationService
 from backend.knowledge_service import KnowledgeService
 from backend.query_planner_service import QueryPlannerService
 from backend.circuit_discovery_service import CircuitDiscoveryService
+from backend.robustness_analysis_service import RobustnessAnalysisService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -69,12 +73,13 @@ _perturbation_service: Optional[PerturbationService] = None
 _knowledge_service: Optional[KnowledgeService] = None
 _planner_service: Optional[QueryPlannerService] = None
 _circuit_discovery_service: Optional[CircuitDiscoveryService] = None
+_robustness_service: Optional[RobustnessAnalysisService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service
+    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service, _robustness_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -95,6 +100,13 @@ async def lifespan(app: FastAPI):
         data_provider=_provider,
         connectome_service=_service,
         perturbation_service=_perturbation_service,
+        query_planner_service=_planner_service,
+        settings=settings,
+    )
+    _robustness_service = RobustnessAnalysisService(
+        circuit_discovery_service=_circuit_discovery_service,
+        knowledge_service=_knowledge_service,
+        data_provider=_provider,
         query_planner_service=_planner_service,
         settings=settings,
     )
@@ -200,6 +212,21 @@ def get_circuit_discovery_service() -> CircuitDiscoveryService:
 
 
 CircuitDiscoveryDep = Annotated[CircuitDiscoveryService, Depends(get_circuit_discovery_service)]
+
+
+def get_robustness_service() -> RobustnessAnalysisService:
+    if _robustness_service is None or not _provider.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "Robustness analysis service is not loaded or connectome dataset is not ready.",
+            },
+        )
+    return _robustness_service
+
+
+RobustnessDep = Annotated[RobustnessAnalysisService, Depends(get_robustness_service)]
 
 
 
@@ -967,3 +994,68 @@ async def compare_investigations(
             status_code=500,
             detail={"error": "comparison_failed", "message": f"Investigation comparison error: {exc}"},
         )
+
+
+# ── V10: Circuit Robustness & Sensitivity Analysis Lab Endpoints ─────────────
+
+@app.get(
+    "/api/neuroquery/robustness/profiles",
+    response_model=list[RankingProfile],
+    summary="Get available candidate neuron ranking profiles",
+    tags=["NeuroQuery Robustness Lab"],
+)
+async def get_robustness_ranking_profiles(
+    robustness_svc: RobustnessDep,
+) -> list[RankingProfile]:
+    """Returns standard parameter-weighted candidate neuron ranking profiles for what-if scenarios."""
+    return robustness_svc.get_available_profiles()
+
+
+@app.post(
+    "/api/neuroquery/robustness/analyze",
+    response_model=RobustnessAnalysisResponse,
+    summary="Execute a circuit robustness and sensitivity analysis over discrete parameter scenarios",
+    tags=["NeuroQuery Robustness Lab"],
+)
+async def analyze_circuit_robustness(
+    req: RobustnessAnalysisRequest,
+    robustness_svc: RobustnessDep,
+) -> RobustnessAnalysisResponse:
+    """
+    Executes a bounded sensitivity analysis across parameter scenarios over real Janelia MaleCNS data.
+    Calculates candidate inclusion fraction, median rank, rank spread, top-k retention,
+    directed edge stability, structural metric sensitivity, and a reproducibility manifest.
+    """
+    try:
+        return robustness_svc.execute_robustness_analysis(req)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "robustness_validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Error executing robustness analysis: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "robustness_analysis_failed", "message": f"Robustness analysis error: {exc}"},
+        )
+
+
+@app.get(
+    "/api/neuroquery/robustness/{analysis_id}",
+    response_model=RobustnessAnalysisResponse,
+    summary="Retrieve previously computed circuit robustness analysis results by ID",
+    tags=["NeuroQuery Robustness Lab"],
+)
+async def get_robustness_analysis(
+    analysis_id: str,
+    robustness_svc: RobustnessDep,
+) -> RobustnessAnalysisResponse:
+    """Retrieves an existing circuit robustness analysis report and reproducibility manifest by ID."""
+    res = robustness_svc.get_analysis(analysis_id)
+    if res is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Robustness analysis '{analysis_id}' not found."},
+        )
+    return res

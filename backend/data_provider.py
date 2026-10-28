@@ -210,6 +210,14 @@ class LocalFeatherProvider:
     def is_loaded(self) -> bool:
         return self._loaded
 
+    @property
+    def dataset_version(self) -> str:
+        return getattr(self, "_dataset_version", DATASET_NAME)
+
+    @dataset_version.setter
+    def dataset_version(self, value: str) -> None:
+        self._dataset_version = value
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _build_neuron(self, body_id: int) -> Optional[Neuron]:

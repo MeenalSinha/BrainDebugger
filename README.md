@@ -21,6 +21,8 @@ Instead of inspecting functions and variables, researchers inspect neurons, syna
 - **V6 — NeuroQuery Foundation & Biological Knowledge Layer**: Versioned concept catalog, authentic scientific citations with direct DOIs, mapping engine, and Knowledge Explorer.
 - **V7 — NeuroQuery Natural-Language Understanding & Structured Investigation Planning**: Dedicated natural-language question interface ("Ask NeuroQuery"), backend LLM provider abstraction (offline deterministic MockLLMProvider and OpenAI-compatible client), intent classification, V6 concept resolution, strict validation, interactive clarification flow, and structured JSON plan export.
 - **V8 — NeuroQuery: Evidence-Grounded Neural Circuit Discovery Engine**: Transforms validated investigation plans into reproducible, inspectable neural circuits using real Janelia MaleCNS v1.0 data. Discovers candidate neurons preserving complete V6 provenance, retrieves actual directed connections from contiguous adjacency indexes, constructs bounded directed subgraphs, computes structural metrics, ranks candidates transparently using dual criteria (evidence tier + synaptic connectivity), and renders interactive Cytoscape graphs with 1-click handoffs to Connectome Explorer, Neuron Inspector, Pathway Tracer, Neural Debugger, and Perturbation Lab.
+- **V9 — Interactive Circuit Exploration, Explainability & Comparative Analysis Studio**: Interactive Cytoscape canvas with live neighborhood expansion (+1 hop), explainable inspector with verified citations, directed pathway tracer overlay, narrative trace provenance, dual-investigation comparison, and multi-format exports.
+- **V10 — Circuit Robustness & Sensitivity Analysis Lab**: Parameterized sensitivity experiments over real Janelia MaleCNS v1.0 data. One-Factor-at-a-Time and Bounded Multi-Parameter Grid sweeps for synaptic thresholds, candidate/node caps, and what-if ranking profiles. Calculates inclusion fractions $I(v)$, median ranks, rank variability, top-$k$ retention, direction-sensitive edge stability ($u \to v \neq v \to u$), and structural metric sensitivity ($\Delta\text{Nodes}, \Delta\text{Edges}$). Generates Schema v1.0.0 reproducibility manifests and multi-format exports (JSON, Candidate CSV, Edge CSV, Metrics CSV, Markdown Report).
 
 ---
 
@@ -563,6 +565,51 @@ The **NeuroQuery Circuit Discovery Engine** closes the loop between natural-lang
 - **Export Candidates (CSV)**: Formatted table with Rank, Body ID, Cell Type, Instance, Superclass, Evidence Tier, Score breakdown, Synapses, Degree, and Matched Concepts.
 - **Export Connections (CSV)**: Preserves Presynaptic Source, Postsynaptic Target, Synaptic Weight, Connection Class, and Expansion status.
 - **Export Markdown Report**: Clean, publication-ready scientific summary document.
+
+---
+
+## Version 10 — Circuit Robustness & Sensitivity Analysis Lab
+
+Version 10 introduces a scientific sensitivity-analysis workflow on top of completed V8/V9 investigations. A single investigation shows what the selected configuration produced; the Robustness Lab shows how findings change under alternative, bounded configurations.
+
+### 1. Robustness Lab Workspace (`RobustnessLab.tsx`)
+- **Integrated Workspace**: Accessible as the 4th tab in the Circuit Discovery Studio or via the "Analyze Robustness" action button.
+- **KPI Summary Cards**: Live metrics for Evaluated Scenarios ($N_{\text{completed}} / N_{\text{requested}}$), Stable Candidates ($\ge 80\%$ inclusion), Stable Directed Connections, and Top-$k$ Retained Candidates.
+
+### 2. Parameter Builder & Scenario Preview
+- **Two Scenario Generation Strategies**:
+  - *One-Factor-at-a-Time (OFAT)*: Varies one selected parameter while keeping all others frozen at the baseline.
+  - *Bounded Multi-Parameter Grid*: Evaluates discrete cartesian combinations within a strict computational budget ($\le 25$ scenarios).
+- **Supported Parameters**:
+  - Minimum Synapse Weight thresholds ($1, 2, 5, 10, 15$).
+  - Maximum Subgraph Nodes ($20, 40, 60, 80$).
+  - Candidate Caps ($5, 10, 20, 30$).
+  - What-If Ranking Profiles: `baseline_default`, `connectivity_heavy`, `hub_topology`, `evidence_prioritized`.
+
+### 3. Stability Metrics
+- **Candidate Inclusion Stability $I(v)$**:
+  $$I(v) = \frac{\text{successful scenarios containing } v}{\text{total successful scenarios}}$$
+  Reports exact percentages with denominators (e.g., `4/4 (100%)`), median rank, rank spread ($\text{max} - \text{min}$), and top-$k$ retention.
+- **Directed Edge Stability**:
+  Treats $u \to v$ strictly distinct from $v \to u$. Preserves authentic MaleCNS synaptic weights and checks strict threshold survival ($\ge 10$).
+- **Metric Sensitivity**:
+  Computes structural responses ($\Delta \text{Nodes}, \Delta \text{Edges}$, density, average weight) relative to baseline with responsive SVG sensitivity plots.
+
+### 4. Reproducibility Manifest (Schema `1.0.0`)
+- Records analysis ID, baseline execution ID, plan ID, research question, dataset fingerprint (`male-cns:v1.0`), catalog version (`1.0.0`), ranking formula version (`v10.0`), strategy, parameters, duration, and scientific caveats.
+- Full support for browser `localStorage` snapshot saving and retrieval without recomputation.
+
+### 5. Multi-Format Exports
+- **Robustness JSON Export**: Full reproducibility manifest, scenario matrix, stability items, and metric sensitivity.
+- **Candidate Stability CSV**: Body ID, cell type, evidence tier, baseline rank, median rank, rank spread, inclusion count/pct, and top-$k$ retention.
+- **Edge Stability CSV**: Source, target, recorded weight, inclusion count/pct, and strict survival.
+- **Metric Sensitivity CSV**: Scenario ID, parameters, $\Delta \text{Nodes}, \Delta \text{Edges}$, density, and duration.
+- **Markdown Robustness Report**: Comprehensive scientific summary document.
+
+### 6. Endpoints
+- `GET /api/neuroquery/robustness/profiles`: Retrieve available ranking profiles.
+- `POST /api/neuroquery/robustness/analyze`: Run bounded sensitivity analysis on an execution.
+- `GET /api/neuroquery/robustness/{analysis_id}`: Retrieve completed robustness analysis results.
 
 ---
 
