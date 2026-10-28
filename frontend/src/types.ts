@@ -754,6 +754,7 @@ export interface DiscoveredCandidateNeuron {
   subgraph_total_weight: number;
   ranking_score: number;
   explanation: string;
+  ranking_breakdown?: Record<string, number>;
 }
 
 export interface CircuitSubgraphNode {
@@ -768,6 +769,7 @@ export interface CircuitSubgraphNode {
   evidence_status?: string | null;
   degree: number;
   total_weight: number;
+  is_expanded?: boolean;
 }
 
 export interface CircuitSubgraphEdge {
@@ -776,6 +778,7 @@ export interface CircuitSubgraphEdge {
   target: number;
   weight: number;
   is_inter_candidate: boolean;
+  is_expanded?: boolean;
 }
 
 export interface CircuitStructuralMetrics {
@@ -838,6 +841,119 @@ export interface InvestigationExecutionRecord {
   error?: string | null;
 }
 
+// ── V9: Subgraph Expansion & Comparison Interfaces ───────────────────────────
 
+export interface CircuitSubgraphExpansionRequest {
+  body_id: number;
+  direction?: 'both' | 'incoming' | 'outgoing';
+  max_nodes?: number;
+  min_weight?: number;
+  existing_node_ids?: number[];
+}
 
+export interface CircuitSubgraphExpansionResponse {
+  root_body_id: number;
+  direction: string;
+  new_nodes: CircuitSubgraphNode[];
+  new_edges: CircuitSubgraphEdge[];
+  truncated: boolean;
+  message: string;
+}
 
+export interface InvestigationComparisonQueryInfo {
+  question: string;
+  intent: IntentType;
+  concept_ids: string[];
+  dataset_version: string;
+  catalog_version: string;
+}
+
+export interface CandidateRankDelta {
+  body_id: number;
+  cell_type?: string | null;
+  rank_a?: number | null;
+  rank_b?: number | null;
+  score_a?: number | null;
+  score_b?: number | null;
+  evidence_tier_a?: string | null;
+  evidence_tier_b?: string | null;
+}
+
+export interface EdgeWeightDelta {
+  id: string;
+  source: number;
+  target: number;
+  weight_a: number;
+  weight_b: number;
+  delta_weight: number;
+}
+
+export interface CandidateComparisonSummary {
+  candidates_a_count: number;
+  candidates_b_count: number;
+  shared_candidate_count: number;
+  unique_a_candidate_count: number;
+  unique_b_candidate_count: number;
+  jaccard_similarity: number;
+  shared_candidate_ids: number[];
+  unique_a_candidate_ids: number[];
+  unique_b_candidate_ids: number[];
+  rank_deltas: CandidateRankDelta[];
+}
+
+export interface GraphComparisonSummary {
+  nodes_a_count: number;
+  nodes_b_count: number;
+  shared_node_count: number;
+  unique_a_node_count: number;
+  unique_b_node_count: number;
+  node_jaccard_similarity: number;
+  shared_node_ids: number[];
+  unique_a_node_ids: number[];
+  unique_b_node_ids: number[];
+  edges_a_count: number;
+  edges_b_count: number;
+  shared_edge_count: number;
+  unique_a_edge_count: number;
+  unique_b_edge_count: number;
+  edge_jaccard_similarity: number;
+  shared_edge_ids: string[];
+  unique_a_edge_ids: string[];
+  unique_b_edge_ids: string[];
+  weight_deltas: EdgeWeightDelta[];
+}
+
+export interface EvidenceComparisonSummary {
+  concepts_a: string[];
+  concepts_b: string[];
+  shared_concepts: string[];
+  unique_a_concepts: string[];
+  unique_b_concepts: string[];
+  sources_a_count: number;
+  sources_b_count: number;
+  shared_source_ids: string[];
+  unique_a_source_ids: string[];
+  unique_b_source_ids: string[];
+}
+
+export interface CircuitComparisonRequest {
+  result_a: CircuitDiscoveryResult;
+  result_b: CircuitDiscoveryResult;
+}
+
+export interface CircuitComparisonResult {
+  investigation_a: InvestigationComparisonQueryInfo;
+  investigation_b: InvestigationComparisonQueryInfo;
+  candidate_comparison: CandidateComparisonSummary;
+  graph_comparison: GraphComparisonSummary;
+  evidence_comparison: EvidenceComparisonSummary;
+  compatibility_warnings: string[];
+}
+
+export interface SavedInvestigationRecord {
+  id: string;
+  saved_at: string;
+  schema_version: string;
+  name: string;
+  result: CircuitDiscoveryResult;
+}

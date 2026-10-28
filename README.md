@@ -494,8 +494,81 @@ The **NeuroQuery Circuit Discovery Engine** closes the loop between natural-lang
 
 ---
 
+## Version 9 Features — Interactive Circuit Exploration, Explainability & Comparative Analysis Studio
+
+**BrainDebugger V9** elevates NeuroQuery from an evidence-grounded discovery engine to an interactive investigation, explainability, and comparative analysis studio.
+
+### 1. Interactive Circuit Exploration Workspace
+- **Dynamic Cytoscape Canvas**:
+  - Interactive toolbar: Zoom in, Zoom out, Fit to screen, Center graph, and Reset layout.
+  - Multi-layout support: Force-Directed (`cose`), Concentric, Hierarchical (`breadthfirst`), Circle, and Grid.
+  - Quick Search: Instantly filter and highlight nodes by Body ID, Cell Type, or Instance.
+  - Dynamic Filters:
+    - Minimum synaptic weight slider ($1$ to $50+$ synapses).
+    - Biological evidence tier filter (`All`, `Tier 1 Verified`, `Tier 2 Partially Supported`, `Tier 3`, `Tier 4`).
+    - Superclass filter (`central`, `sensory`, `motor`, etc.).
+    - Toggles: "Show Partners", "Candidate-Only Connections", and "Show Synapse Weights".
+  - Accessible visual encoding:
+    - Candidate neurons (purple `#8b5cf6` with thick border)
+    - Contextual partners (slate `#64748b`)
+    - Selected neuron (amber `#f59e0b` halo)
+    - Expanded neighborhood neurons (emerald `#10b981` dashed ring)
+    - Directed chemical synapses with explicit presynaptic $\to$ postsynaptic arrowheads.
+
+### 2. Bounded Graph Neighborhood Expansion
+- **Endpoint**: `POST /api/neuroquery/expand-subgraph`
+- Enables researchers to explore the recorded neighborhood (+1 hop) around any selected neuron beyond the currently loaded subgraph.
+- Queries authentic directed connections from Janelia MaleCNS v1.0 using contiguous CSR arrays.
+- Applies strict limits (`max_nodes=15`, `min_weight`) and prevents node or edge duplication.
+- Clearly flags expanded neurons and dashed connection lines to preserve the provenance boundary between the original query result and interactive expansion.
+
+### 3. Explainable Neuron and Connection Inspector
+- **"Why is this neuron included?"**: Transparently explains whether the node is an original candidate (with concept mapping ID, matched annotation field, and evidence tier), an expanded neighborhood partner, or a contextual synaptic partner.
+- **Authoritative Ranking Breakdown**: Displays the exact components of the dual-criteria formula:
+  $$\text{Score} = \text{Tier Weight} + (\text{Synapses} \times 0.5) + (\text{Degree} \times 10.0)$$
+- **Synaptic Connection Details**: Displays presynaptic $\to$ postsynaptic body IDs, recorded weight, connection class (inter-candidate vs partner), and traced-only coverage notices.
+- **Evidence Sources**: Lists peer-reviewed publications with direct DOI links.
+
+### 4. Directed Pathway Exploration & In-Graph Route Highlighting
+- Select any two visible neurons as **Pathway Source (A)** and **Pathway Target (B)**.
+- Traces directed anatomical routes through the underlying connectome via `api.findPaths`.
+- Highlights the exact sequence of nodes and edges directly on the Cytoscape canvas in glowing gold (`#eab308`).
+- Direct handoff button to open the selected pair in the **V3 Pathway Tracer** for multi-hop detour analysis.
+
+### 5. Investigation Narrative & Evidence Traceability
+- **9-Step Chronological Reasoning Trace**:
+  1. *Research Question Formulation* (Recorded Data)
+  2. *Intent Classification* (Computed Result)
+  3. *Biological Concept Resolution* (Catalog Evidence)
+  4. *Plan Validation & Security Audit* (Computed Result)
+  5. *Biological Candidate Neuron Resolution* (Recorded Data)
+  6. *Evidence Mapping & DOI Verification* (Catalog Evidence)
+  7. *Directed Subgraph Extraction* (Recorded Data)
+  8. *Transparent Dual-Criteria Ranking* (Computed Result)
+  9. *Scientific Caveats & Suggested Next Steps* (Interpretation)
+- Clearly differentiates recorded biological facts from computed metrics, catalog mappings, and interpretations.
+
+### 6. Comparative Circuit Analysis Studio
+- **Endpoint**: `POST /api/neuroquery/compare`
+- **Local Snapshot Storage**: Save completed investigations in browser `localStorage` (schema `1.0.0`) with custom labels.
+- **Side-by-Side Comparative Metrics**:
+  - Query configuration diff (question, intent, resolved concepts, dataset/catalog versions).
+  - Candidate neuron overlap: $|A|$, $|B|$, shared count, unique A, unique B, Jaccard similarity index, and candidate rank shift table.
+  - Directed graph topology diff: node counts, edge counts, shared directed connections, unique edges, edge Jaccard similarity, and weight shift deltas.
+  - **Strict Direction Sensitivity**: An edge $u \to v$ is distinct from $v \to u$.
+  - Scientific compatibility warnings for cross-version or cross-intent comparisons.
+
+### 7. Multi-Format Reproducible Exports
+- **Export Result JSON**: Complete, versioned JSON payload including plan, candidates, subgraphs, metrics, evidence, and limitations.
+- **Export Candidates (CSV)**: Formatted table with Rank, Body ID, Cell Type, Instance, Superclass, Evidence Tier, Score breakdown, Synapses, Degree, and Matched Concepts.
+- **Export Connections (CSV)**: Preserves Presynaptic Source, Postsynaptic Target, Synaptic Weight, Connection Class, and Expansion status.
+- **Export Markdown Report**: Clean, publication-ready scientific summary document.
+
+---
+
 ## Security
 
 - API credentials are never stored in source code, commit history, or client bundles.
 - Internal exception stack traces are masked behind structured API errors.
 - Dataset paths and environment variables are managed via `.env` (gitignored).
+

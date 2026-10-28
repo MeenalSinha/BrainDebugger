@@ -1884,6 +1884,302 @@ class TestV8CircuitDiscoveryEngine:
         assert len(record.logs) >= 2
         assert len(record.operations_executed) >= 1
 
+    def test_circuit_discovery_execution_by_plan_id(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, planner = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-lookup-test",
+            original_question="Inspect neuron 10001",
+            normalized_question="Inspect neuron 10001",
+            intent=IntentType.inspect_neuron,
+            requested_entities={"body_id": 10001},
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Lookup test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        planner.register_plan(plan)
+
+        # Execute using ONLY plan_id (no embedded plan)
+        res = cds.execute_plan(InvestigationExecutionRequest(plan_id="plan-lookup-test"))
+        assert res.execution_status == ExecutionStatus.completed
+        assert res.plan_id == "plan-lookup-test"
+
+        # Unknown plan_id raises ValueError with clear guidance
+        import pytest
+        with pytest.raises(ValueError, match="not found"):
+            cds.execute_plan(InvestigationExecutionRequest(plan_id="plan-nonexistent"))
+
+    def test_circuit_discovery_execution_missing_plan_and_id(self):
+        from backend.models import InvestigationExecutionRequest
+        cds, _ = self._make_services()
+        import pytest
+        with pytest.raises(ValueError, match="must include either a validated 'plan' object or a valid 'plan_id'"):
+            cds.execute_plan(InvestigationExecutionRequest())
+
+    def test_circuit_ranking_breakdown_populated(self):
+        from backend.models import (
+            ExecutionStatus,
+            IntentType,
+            InvestigationExecutionRequest,
+            InvestigationPlan,
+            PlanSupportStatus,
+        )
+        cds, _ = self._make_services()
+
+        plan = InvestigationPlan(
+            plan_id="plan-breakdown-test",
+            original_question="Explore giant fiber neurons",
+            normalized_question="Explore giant fiber neurons",
+            intent=IntentType.circuit_discovery,
+            concept_ids=["giant_fiber_escape_circuit"],
+            support_status=PlanSupportStatus.ready_for_review,
+            explanation="Ranking breakdown test",
+            created_at="2026-10-28T00:00:00Z",
+        )
+        res = cds.execute_plan(InvestigationExecutionRequest(plan=plan))
+        assert res.execution_status == ExecutionStatus.completed
+        assert len(res.candidate_neurons) > 0
+        cand = res.candidate_neurons[0]
+        assert cand.ranking_breakdown is not None
+        assert "evidence_tier_weight" in cand.ranking_breakdown
+        assert "synaptic_weight_contribution" in cand.ranking_breakdown
+        assert "degree_contribution" in cand.ranking_breakdown
+        assert "total_score" in cand.ranking_breakdown
+        assert cand.ranking_breakdown["total_score"] == cand.ranking_score
+
+    def test_subgraph_neighborhood_expansion(self):
+        from backend.models import CircuitSubgraphExpansionRequest
+        cds, _ = self._make_services()
+
+        # Expand neighborhood around giant fiber neuron 10001
+        req = CircuitSubgraphExpansionRequest(
+            body_id=10001,
+            direction="both",
+            max_nodes=10,
+            min_weight=1,
+            existing_node_ids=[10001],
+        )
+        res = cds.expand_subgraph(req)
+        assert res.root_body_id == 10001
+        assert res.direction == "both"
+        # Should discover new nodes and directed edges from real dataset
+        assert len(res.new_nodes) > 0
+        assert len(res.new_edges) > 0
+        for n in res.new_nodes:
+            assert n.is_expanded is True
+            assert n.body_id != 10001  # duplicate avoidance
+        for e in res.new_edges:
+            assert e.is_expanded is True
+            assert e.weight >= 1
+
+    def test_subgraph_expansion_unknown_neuron(self):
+        from backend.models import CircuitSubgraphExpansionRequest
+        cds, _ = self._make_services()
+
+        req = CircuitSubgraphExpansionRequest(
+            body_id=999999999999,
+            direction="both",
+            max_nodes=10,
+            min_weight=1,
+        )
+        res = cds.expand_subgraph(req)
+        assert res.root_body_id == 999999999999
+        assert len(res.new_nodes) == 0
+        assert len(res.new_edges) == 0
+        assert "not found" in res.message
+
+    def test_comparative_circuit_analysis(self):
+        from backend.models import (
+            CircuitComparisonRequest,
+            CircuitDiscoveryResult,
+            CircuitStructuralMetrics,
+            CircuitSubgraphEdge,
+            CircuitSubgraphNode,
+            DiscoveredCandidateNeuron,
+            ExecutionStatus,
+            IntentType,
+        )
+        cds, _ = self._make_services()
+
+        metrics = CircuitStructuralMetrics(
+            total_nodes=2,
+            total_edges=1,
+            candidate_nodes_count=2,
+            partner_nodes_count=0,
+            density=0.5,
+            average_weight=10.0,
+            max_weight=10,
+            top_hub_body_id=10001,
+            connected_components=1,
+        )
+
+        cand_a = DiscoveredCandidateNeuron(
+            body_id=10001,
+            cell_type="GF",
+            matched_concept_ids=["giant_fiber_escape_circuit"],
+            matched_mapping_id="map-gf",
+            matched_field="type",
+            matched_value="GF",
+            evidence_status="verified",
+            evidence_tier="Tier 1 (Verified)",
+            subgraph_in_degree=0,
+            subgraph_out_degree=1,
+            subgraph_total_weight=10,
+            ranking_score=1015.0,
+            explanation="GF candidate",
+        )
+        cand_b = DiscoveredCandidateNeuron(
+            body_id=800146,
+            cell_type="PSI",
+            matched_concept_ids=["giant_fiber_escape_circuit"],
+            matched_mapping_id="map-psi",
+            matched_field="type",
+            matched_value="PSI",
+            evidence_status="verified",
+            evidence_tier="Tier 1 (Verified)",
+            subgraph_in_degree=1,
+            subgraph_out_degree=0,
+            subgraph_total_weight=10,
+            ranking_score=1015.0,
+            explanation="PSI candidate",
+        )
+
+        node_a = CircuitSubgraphNode(
+            id="10001",
+            body_id=10001,
+            cell_type="GF",
+            is_candidate=True,
+            matched_concept_ids=["giant_fiber_escape_circuit"],
+            degree=1,
+            total_weight=10,
+        )
+        node_b = CircuitSubgraphNode(
+            id="800146",
+            body_id=800146,
+            cell_type="PSI",
+            is_candidate=True,
+            matched_concept_ids=["giant_fiber_escape_circuit"],
+            degree=1,
+            total_weight=10,
+        )
+
+        edge_ab = CircuitSubgraphEdge(
+            id="10001_800146",
+            source=10001,
+            target=800146,
+            weight=10,
+            is_inter_candidate=True,
+        )
+
+        res_a = CircuitDiscoveryResult(
+            execution_id="exec-a",
+            question="Question A",
+            intent=IntentType.circuit_discovery,
+            resolved_concepts=[],
+            candidate_neurons=[cand_a, cand_b],
+            subgraph_nodes=[node_a, node_b],
+            subgraph_edges=[edge_ab],
+            structural_metrics=metrics,
+            ranking_method="dual_criteria",
+            evidence_sources=[],
+            dataset_version="male-cns:v1.0",
+            catalog_version="1.0.0",
+            source_coverage="Janelia MaleCNS v1.0",
+            limitations=[],
+            warnings=[],
+            execution_status=ExecutionStatus.completed,
+            execution_duration_ms=10.0,
+            completed_at="2026-10-28T00:00:00Z",
+        )
+
+        # Result B has cand_a and a different candidate 99999
+        cand_c = DiscoveredCandidateNeuron(
+            body_id=99999,
+            cell_type="TTMn",
+            matched_concept_ids=["motor_circuit"],
+            matched_mapping_id="map-ttmn",
+            matched_field="type",
+            matched_value="TTMn",
+            evidence_status="verified",
+            evidence_tier="Tier 2 (Partially Supported)",
+            subgraph_in_degree=0,
+            subgraph_out_degree=0,
+            subgraph_total_weight=0,
+            ranking_score=500.0,
+            explanation="TTMn candidate",
+        )
+        node_c = CircuitSubgraphNode(
+            id="99999",
+            body_id=99999,
+            cell_type="TTMn",
+            is_candidate=True,
+            matched_concept_ids=["motor_circuit"],
+            degree=0,
+            total_weight=0,
+        )
+
+        res_b = CircuitDiscoveryResult(
+            execution_id="exec-b",
+            question="Question B",
+            intent=IntentType.circuit_discovery,
+            resolved_concepts=[],
+            candidate_neurons=[cand_a, cand_c],
+            subgraph_nodes=[node_a, node_c],
+            subgraph_edges=[],  # no edges in B
+            structural_metrics=metrics,
+            ranking_method="dual_criteria",
+            evidence_sources=[],
+            dataset_version="male-cns:v1.0",
+            catalog_version="1.0.0",
+            source_coverage="Janelia MaleCNS v1.0",
+            limitations=[],
+            warnings=[],
+            execution_status=ExecutionStatus.completed,
+            execution_duration_ms=12.0,
+            completed_at="2026-10-28T00:00:00Z",
+        )
+
+        comp = cds.compare_investigations(CircuitComparisonRequest(result_a=res_a, result_b=res_b))
+        assert comp.investigation_a.question == "Question A"
+        assert comp.investigation_b.question == "Question B"
+
+        # Candidate comparison: shared=[10001], unique_a=[800146], unique_b=[99999]
+        assert comp.candidate_comparison.shared_candidate_count == 1
+        assert comp.candidate_comparison.shared_candidate_ids == [10001]
+        assert comp.candidate_comparison.unique_a_candidate_ids == [800146]
+        assert comp.candidate_comparison.unique_b_candidate_ids == [99999]
+        # Jaccard = 1 / 3 = 0.3333
+        assert comp.candidate_comparison.jaccard_similarity == 0.3333
+
+        # Graph comparison: shared_nodes=[10001], unique_a_edges=[10001_800146], shared_edges=[]
+        assert comp.graph_comparison.shared_node_ids == [10001]
+        assert comp.graph_comparison.unique_a_edge_ids == ["10001_800146"]
+        assert comp.graph_comparison.shared_edge_count == 0
+        assert comp.graph_comparison.edge_jaccard_similarity == 0.0
+
+        # Edge direction sensitivity: edge 800146_10001 is NOT equal to 10001_800146
+        reverse_edge = CircuitSubgraphEdge(
+            id="800146_10001",
+            source=800146,
+            target=10001,
+            weight=10,
+            is_inter_candidate=True,
+        )
+        res_b_reversed = res_b.model_copy(update={"subgraph_edges": [reverse_edge]})
+        comp_rev = cds.compare_investigations(CircuitComparisonRequest(result_a=res_a, result_b=res_b_reversed))
+        # Even though same nodes are involved, directed edges are distinct
+        assert comp_rev.graph_comparison.shared_edge_count == 0
+        assert "10001_800146" in comp_rev.graph_comparison.unique_a_edge_ids
+        assert "800146_10001" in comp_rev.graph_comparison.unique_b_edge_ids
+
+
 
 
 

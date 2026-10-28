@@ -781,6 +781,7 @@ class DiscoveredCandidateNeuron(BaseModel):
     subgraph_out_degree: int = 0
     subgraph_total_weight: int = 0
     ranking_score: float = 0.0
+    ranking_breakdown: Optional[dict[str, float]] = None
     explanation: str = ""
 
 
@@ -793,6 +794,7 @@ class CircuitSubgraphNode(BaseModel):
     superclass: Optional[str] = None
     consensus_nt: Optional[str] = None
     is_candidate: bool = False
+    is_expanded: bool = False
     matched_concept_ids: list[str] = Field(default_factory=list)
     evidence_status: Optional[str] = None
     degree: int = 0
@@ -806,6 +808,7 @@ class CircuitSubgraphEdge(BaseModel):
     target: int
     weight: int
     is_inter_candidate: bool = False
+    is_expanded: bool = False
 
 
 class CircuitStructuralMetrics(BaseModel):
@@ -857,9 +860,8 @@ class InvestigationExecutionRequest(BaseModel):
     min_edge_weight: int = Field(default=1, ge=1, le=100)
 
 
-
 class InvestigationExecutionRecord(BaseModel):
-    """Persistent execution record tracking lifecycle and operation logs."""
+    """Execution record tracking lifecycle and operation logs in session memory."""
     execution_id: str
     plan_id: Optional[str] = None
     status: ExecutionStatus
@@ -871,6 +873,128 @@ class InvestigationExecutionRecord(BaseModel):
     completed_at: Optional[str] = None
     result: Optional[CircuitDiscoveryResult] = None
     error: Optional[str] = None
+
+
+# ── V9: Subgraph Neighborhood Expansion Models ───────────────────────────────
+
+class CircuitSubgraphExpansionRequest(BaseModel):
+    """Request to expand a selected neuron's recorded neighborhood beyond the loaded subgraph."""
+    body_id: int
+    direction: str = Field(default="both", pattern="^(both|incoming|outgoing)$")
+    max_nodes: int = Field(default=15, ge=1, le=50)
+    min_weight: int = Field(default=1, ge=1, le=100)
+    existing_node_ids: list[int] = Field(default_factory=list)
+
+
+class CircuitSubgraphExpansionResponse(BaseModel):
+    """Result of bounded graph expansion from actual MaleCNS connections."""
+    root_body_id: int
+    direction: str
+    new_nodes: list[CircuitSubgraphNode]
+    new_edges: list[CircuitSubgraphEdge]
+    truncated: bool = False
+    message: str
+
+
+# ── V9: Comparative Analysis Models ──────────────────────────────────────────
+
+class InvestigationComparisonQueryInfo(BaseModel):
+    """Query and metadata comparison summary for an investigation."""
+    question: str
+    intent: IntentType
+    concept_ids: list[str] = Field(default_factory=list)
+    dataset_version: str
+    catalog_version: str
+
+
+class CandidateRankDelta(BaseModel):
+    """Comparison metrics for a candidate neuron present in either or both investigations."""
+    body_id: int
+    cell_type: Optional[str] = None
+    rank_a: Optional[int] = None
+    rank_b: Optional[int] = None
+    score_a: Optional[float] = None
+    score_b: Optional[float] = None
+    evidence_tier_a: Optional[str] = None
+    evidence_tier_b: Optional[str] = None
+
+
+class EdgeWeightDelta(BaseModel):
+    """Comparison of edge weights across shared directed connections."""
+    id: str
+    source: int
+    target: int
+    weight_a: int
+    weight_b: int
+    delta_weight: int
+
+
+class CandidateComparisonSummary(BaseModel):
+    """Comparative summary of candidate neuron populations."""
+    candidates_a_count: int
+    candidates_b_count: int
+    shared_candidate_count: int
+    unique_a_candidate_count: int
+    unique_b_candidate_count: int
+    jaccard_similarity: float
+    shared_candidate_ids: list[int] = Field(default_factory=list)
+    unique_a_candidate_ids: list[int] = Field(default_factory=list)
+    unique_b_candidate_ids: list[int] = Field(default_factory=list)
+    rank_deltas: list[CandidateRankDelta] = Field(default_factory=list)
+
+
+class GraphComparisonSummary(BaseModel):
+    """Comparative summary of directed subgraph topology."""
+    nodes_a_count: int
+    nodes_b_count: int
+    shared_node_count: int
+    unique_a_node_count: int
+    unique_b_node_count: int
+    node_jaccard_similarity: float
+    shared_node_ids: list[int] = Field(default_factory=list)
+    unique_a_node_ids: list[int] = Field(default_factory=list)
+    unique_b_node_ids: list[int] = Field(default_factory=list)
+    edges_a_count: int
+    edges_b_count: int
+    shared_edge_count: int
+    unique_a_edge_count: int
+    unique_b_edge_count: int
+    edge_jaccard_similarity: float
+    shared_edge_ids: list[str] = Field(default_factory=list)
+    unique_a_edge_ids: list[str] = Field(default_factory=list)
+    unique_b_edge_ids: list[str] = Field(default_factory=list)
+    weight_deltas: list[EdgeWeightDelta] = Field(default_factory=list)
+
+
+class EvidenceComparisonSummary(BaseModel):
+    """Comparative summary of biological concept and scientific evidence coverage."""
+    concepts_a: list[str] = Field(default_factory=list)
+    concepts_b: list[str] = Field(default_factory=list)
+    shared_concepts: list[str] = Field(default_factory=list)
+    unique_a_concepts: list[str] = Field(default_factory=list)
+    unique_b_concepts: list[str] = Field(default_factory=list)
+    sources_a_count: int
+    sources_b_count: int
+    shared_source_ids: list[str] = Field(default_factory=list)
+    unique_a_source_ids: list[str] = Field(default_factory=list)
+    unique_b_source_ids: list[str] = Field(default_factory=list)
+
+
+class CircuitComparisonRequest(BaseModel):
+    """Request to compare two completed investigation results."""
+    result_a: CircuitDiscoveryResult
+    result_b: CircuitDiscoveryResult
+
+
+class CircuitComparisonResult(BaseModel):
+    """Authentic comparative analysis between two NeuroQuery investigation results."""
+    investigation_a: InvestigationComparisonQueryInfo
+    investigation_b: InvestigationComparisonQueryInfo
+    candidate_comparison: CandidateComparisonSummary
+    graph_comparison: GraphComparisonSummary
+    evidence_comparison: EvidenceComparisonSummary
+    compatibility_warnings: list[str] = Field(default_factory=list)
+
 
 
 

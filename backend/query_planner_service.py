@@ -58,6 +58,15 @@ class QueryPlannerService:
         self.data_provider = data_provider
         self.settings = settings
         self.llm_provider = llm_provider or get_llm_provider(settings)
+        self._plans: dict[str, InvestigationPlan] = {}
+
+    def get_plan(self, plan_id: str) -> Optional[InvestigationPlan]:
+        """Retrieves a previously generated or registered plan by ID."""
+        return self._plans.get(plan_id)
+
+    def register_plan(self, plan: InvestigationPlan) -> None:
+        """Registers a plan in the session store so it can be referenced by plan_id."""
+        self._plans[plan.plan_id] = plan
 
     async def generate_plan(self, req: PlanGenerationRequest) -> InvestigationPlan:
         """
@@ -306,6 +315,7 @@ class QueryPlannerService:
             created_at=datetime.now(timezone.utc).isoformat(),
         )
 
+        self._plans[plan.plan_id] = plan
         return plan
 
     def validate_plan(self, plan: InvestigationPlan) -> PlanValidationResponse:

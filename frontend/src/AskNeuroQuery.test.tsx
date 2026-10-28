@@ -18,6 +18,9 @@ vi.mock('./api', () => ({
     listNeuroQueryIntents: vi.fn(),
     executeInvestigationPlan: vi.fn(),
     getInvestigationExecution: vi.fn(),
+    expandCircuitSubgraph: vi.fn(),
+    compareCircuitInvestigations: vi.fn(),
+    findPaths: vi.fn(),
   },
   ApiClientError: class ApiClientError extends Error {
     constructor(public status: number, public detail: string) {
@@ -371,5 +374,107 @@ describe('AskNeuroQuery (V7) Component', () => {
       expect(screen.getByText('Calculated Structural Graph Metrics')).toBeDefined();
     });
   });
+
+  it('renders V9 exploration controls, tabs, and switches to Reasoning Trace and Compare views', async () => {
+    const mockResult = {
+      execution_id: 'exec-v9-demo',
+      question: 'Explore visual motion circuit',
+      intent: 'circuit_discovery' as const,
+      resolved_concepts: [{ concept_id: 'motion_detection', display_name: 'Motion Detection', description: 'desc', domain: 'visual', related_concepts: [], evidence_status: 'verified' as const, mapping_ids: [], source_references: [], dataset_compatibility: 'compatible' as const, catalog_version: '1.0.0' }],
+      candidate_neurons: [
+        {
+          body_id: 10001,
+          cell_type: 'T4a',
+          matched_concept_ids: ['motion_detection'],
+          matched_mapping_ids: ['map-t4a'],
+          matched_field: 'type',
+          matched_value: 'T4a',
+          evidence_status: 'verified',
+          evidence_tier: 'Tier 1 (Verified)',
+          subgraph_in_degree: 2,
+          subgraph_out_degree: 3,
+          subgraph_total_weight: 45,
+          ranking_score: 1052.5,
+          ranking_breakdown: {
+            evidence_tier_weight: 1000.0,
+            synaptic_weight_contribution: 22.5,
+            degree_contribution: 50.0,
+            total_score: 1052.5,
+          },
+          explanation: 'T4a candidate',
+        },
+      ],
+      subgraph_nodes: [
+        {
+          id: '10001',
+          body_id: 10001,
+          cell_type: 'T4a',
+          is_candidate: true,
+          matched_concept_ids: ['motion_detection'],
+          degree: 5,
+          total_weight: 45,
+        },
+      ],
+      subgraph_edges: [],
+      structural_metrics: {
+        total_nodes: 1,
+        total_edges: 0,
+        candidate_nodes_count: 1,
+        partner_nodes_count: 0,
+        density: 0.0,
+        average_weight: 0.0,
+        max_weight: 0,
+        top_hub_body_id: 10001,
+        connected_components: 1,
+      },
+      ranking_method: 'dual_criteria',
+      evidence_sources: [],
+      dataset_version: 'male-cns:v1.0',
+      catalog_version: '1.0.0',
+      source_coverage: 'Janelia MaleCNS v1.0',
+      limitations: ['Traced-only synaptic weights'],
+      warnings: [],
+      execution_status: 'completed' as const,
+      execution_duration_ms: 12.0,
+      completed_at: '2026-10-28T00:00:00Z',
+      is_partial: false,
+    };
+
+    vi.mocked(api.executeInvestigationPlan).mockResolvedValue(mockResult);
+
+    render(<AskNeuroQuery />);
+
+    const input = screen.getByPlaceholderText(/How does the fruit fly visual system detect directional motion/i);
+    fireEvent.change(input, { target: { value: 'Motion query' } });
+    fireEvent.click(screen.getByRole('button', { name: /Interpret Question/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('plan-test-12345')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Run Investigation/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Circuit Explorer')).toBeDefined();
+      expect(screen.getByText('Reasoning Trace')).toBeDefined();
+      expect(screen.getByText('Compare Investigations')).toBeDefined();
+      expect(screen.getByText('Candidates CSV')).toBeDefined();
+      expect(screen.getByText('Edges CSV')).toBeDefined();
+    });
+
+    // Switch to Reasoning Trace tab
+    fireEvent.click(screen.getByText('Reasoning Trace'));
+    await waitFor(() => {
+      expect(screen.getByText('Investigation Reasoning Trace & Provenance')).toBeDefined();
+      expect(screen.getByText('Step 1: Research Question Formulation')).toBeDefined();
+    });
+
+    // Switch to Compare Investigations tab
+    fireEvent.click(screen.getByText('Compare Investigations'));
+    await waitFor(() => {
+      expect(screen.getByText('Compare Two Completed NeuroQuery Investigations')).toBeDefined();
+    });
+  });
 });
+
 

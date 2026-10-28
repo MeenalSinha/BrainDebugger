@@ -49,6 +49,10 @@ from backend.models import (
     CircuitDiscoveryResult,
     InvestigationExecutionRequest,
     InvestigationExecutionRecord,
+    CircuitSubgraphExpansionRequest,
+    CircuitSubgraphExpansionResponse,
+    CircuitComparisonRequest,
+    CircuitComparisonResult,
 )
 from backend.perturbation_service import PerturbationService
 from backend.knowledge_service import KnowledgeService
@@ -777,8 +781,8 @@ async def list_neuroquery_intents() -> list[dict[str, str]]:
         {
             "intent": IntentType.circuit_discovery.value,
             "display_name": "Circuit Discovery",
-            "description": "Identify neuron populations, synaptic connectivity, and functional routes for a biological process (V7 plans; V8 executes).",
-            "status": "planned_v8",
+            "description": "Identify candidate neuron populations, retrieve directed synaptic connectivity, construct bounded subgraphs, and rank candidates using evidence and network topology.",
+            "status": "supported",
         },
         {
             "intent": IntentType.inspect_neuron.value,
@@ -904,5 +908,62 @@ async def get_investigation_execution(
     return record
 
 
+# ── V9: Subgraph Expansion and Comparative Analysis Endpoints ────────────────
+
+@app.post(
+    "/api/neuroquery/expand-subgraph",
+    response_model=CircuitSubgraphExpansionResponse,
+    summary="Expand a selected neuron's recorded neighborhood beyond the loaded subgraph",
+    tags=["NeuroQuery Circuit Discovery"],
+)
+async def expand_circuit_subgraph(
+    req: CircuitSubgraphExpansionRequest,
+    discovery_svc: CircuitDiscoveryDep,
+) -> CircuitSubgraphExpansionResponse:
+    """
+    Expands the recorded neighborhood of a selected neuron using authentic Janelia MaleCNS v1.0
+    connections, bounded by explicit node, edge, and minimum synaptic weight limits.
+    """
+    try:
+        return discovery_svc.expand_subgraph(req)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "expansion_validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Error expanding subgraph: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "expansion_failed", "message": f"Subgraph expansion error: {exc}"},
+        )
 
 
+@app.post(
+    "/api/neuroquery/compare",
+    response_model=CircuitComparisonResult,
+    summary="Compare two completed NeuroQuery investigation results",
+    tags=["NeuroQuery Comparative Analysis"],
+)
+async def compare_investigations(
+    req: CircuitComparisonRequest,
+    discovery_svc: CircuitDiscoveryDep,
+) -> CircuitComparisonResult:
+    """
+    Performs authentic comparative analysis between two completed NeuroQuery investigations,
+    computing candidate overlap, strictly direction-sensitive edge differences, weight deltas,
+    evidence differences, and scientific compatibility warnings.
+    """
+    try:
+        return discovery_svc.compare_investigations(req)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "comparison_validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Error comparing investigations: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "comparison_failed", "message": f"Investigation comparison error: {exc}"},
+        )

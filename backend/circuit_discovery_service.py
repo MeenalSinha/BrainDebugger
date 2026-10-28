@@ -28,14 +28,24 @@ from backend.data_provider import LocalFeatherProvider
 from backend.knowledge_service import KnowledgeService
 from backend.models import (
     BiologicalConcept,
+    CandidateComparisonSummary,
+    CandidateRankDelta,
+    CircuitComparisonRequest,
+    CircuitComparisonResult,
     CircuitDiscoveryResult,
     CircuitStructuralMetrics,
     CircuitSubgraphEdge,
+    CircuitSubgraphExpansionRequest,
+    CircuitSubgraphExpansionResponse,
     CircuitSubgraphNode,
     DiscoveredCandidateNeuron,
+    EdgeWeightDelta,
+    EvidenceComparisonSummary,
     EvidenceSource,
     ExecutionStatus,
+    GraphComparisonSummary,
     IntentType,
+    InvestigationComparisonQueryInfo,
     InvestigationExecutionRecord,
     InvestigationExecutionRequest,
     InvestigationPlan,
@@ -100,8 +110,16 @@ class CircuitDiscoveryService:
         now_iso = datetime.now(timezone.utc).isoformat()
 
         plan = req.plan
-        if not plan:
-            raise ValueError("Execution request must include a validated InvestigationPlan.")
+        if not plan and req.plan_id:
+            if self.query_planner_service:
+                plan = self.query_planner_service.get_plan(req.plan_id)
+            if not plan:
+                raise ValueError(
+                    f"Investigation plan with ID '{req.plan_id}' not found. "
+                    "Please provide an embedded plan or generate a plan first."
+                )
+        elif not plan:
+            raise ValueError("Execution request must include either a validated 'plan' object or a valid 'plan_id'.")
 
         # Revalidate plan before execution
         if self.query_planner_service:
@@ -427,8 +445,15 @@ class CircuitDiscoveryService:
             c.subgraph_total_weight = cand_weight[c.body_id]
 
             tier_score = tier_weights.get(c.evidence_tier, 0.0)
-            structural_score = (c.subgraph_total_weight * 0.5) + ((c.subgraph_in_degree + c.subgraph_out_degree) * 10.0)
-            c.ranking_score = round(tier_score + structural_score, 2)
+            synaptic_contrib = round(c.subgraph_total_weight * 0.5, 2)
+            degree_contrib = round((c.subgraph_in_degree + c.subgraph_out_degree) * 10.0, 2)
+            c.ranking_score = round(tier_score + synaptic_contrib + degree_contrib, 2)
+            c.ranking_breakdown = {
+                "evidence_tier_weight": tier_score,
+                "synaptic_weight_contribution": synaptic_contrib,
+                "degree_contribution": degree_contrib,
+                "total_score": c.ranking_score,
+            }
 
         # Sort descending by score, tie-breaking deterministically by body_id
         ranked = sorted(candidates, key=lambda x: (x.ranking_score, -x.body_id), reverse=True)
@@ -924,4 +949,314 @@ class CircuitDiscoveryService:
             execution_status=ExecutionStatus.completed,
             execution_duration_ms=duration_ms,
             completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # ── V9: Subgraph Neighborhood Expansion ───────────────────────────────────
+
+    def expand_subgraph(
+        self,
+        req: CircuitSubgraphExpansionRequest,
+    ) -> CircuitSubgraphExpansionResponse:
+        """
+        Bounded graph expansion around a selected neuron's recorded neighborhood.
+        Queries authentic directed connections from Janelia MaleCNS v1.0, applying
+        strict node, edge, and minimum-weight constraints without duplicate nodes or edges.
+        """
+        self.data_provider._ensure_graph_indexed()
+        root_id = req.body_id
+        existing_nodes = set(req.existing_node_ids)
+        existing_nodes.add(root_id)
+
+        # Check if root neuron exists in dataset
+        if root_id not in self.data_provider._annotations.index and root_id not in self.data_provider._pre_index:
+            return CircuitSubgraphExpansionResponse(
+                root_body_id=root_id,
+                direction=req.direction,
+                new_nodes=[],
+                new_edges=[],
+                truncated=False,
+                message=f"Body ID {root_id} not found in MaleCNS annotations or connections.",
+            )
+
+        new_nodes_map: dict[int, CircuitSubgraphNode] = {}
+        new_edges_map: dict[str, CircuitSubgraphEdge] = {}
+        candidate_partners: dict[int, int] = collections.defaultdict(int)
+        discovered_edges: list[tuple[int, int, int]] = []
+
+        # 1. Outgoing connections if direction in ("both", "outgoing")
+        if req.direction in ("both", "outgoing"):
+            if root_id in self.data_provider._pre_index:
+                s, e = self.data_provider._pre_index[root_id]
+                posts = self.data_provider._post_arr[s:e]
+                wts = self.data_provider._wt_arr[s:e]
+                for post_id, wt in zip(posts, wts):
+                    post_id = int(post_id)
+                    wt = int(wt)
+                    if wt >= req.min_weight:
+                        discovered_edges.append((root_id, post_id, wt))
+                        if post_id not in existing_nodes:
+                            candidate_partners[post_id] += wt
+
+        # 2. Incoming connections if direction in ("both", "incoming")
+        if req.direction in ("both", "incoming"):
+            wt_df = self.data_provider._weights
+            if not wt_df.empty:
+                inc_df = wt_df[(wt_df["body_post"] == root_id) & (wt_df["weight"] >= req.min_weight)]
+                for _, row in inc_df.iterrows():
+                    pre_id = int(row["body_pre"])
+                    wt = int(row["weight"])
+                    discovered_edges.append((pre_id, root_id, wt))
+                    if pre_id not in existing_nodes:
+                        candidate_partners[pre_id] += wt
+
+        # Sort candidate partner neurons by total synaptic weight
+        sorted_candidates = sorted(candidate_partners.items(), key=lambda x: x[1], reverse=True)
+        selected_new_body_ids = {bid for bid, _ in sorted_candidates[:req.max_nodes]}
+        truncated = len(sorted_candidates) > req.max_nodes
+
+        # Build new nodes
+        for bid in selected_new_body_ids:
+            ann_row = None
+            if bid in self.data_provider._annotations.index:
+                ann_row = self.data_provider._annotations.loc[bid]
+
+            consensus_nt = None
+            if not self.data_provider._nt.empty and bid in self.data_provider._nt.index:
+                nt_row = self.data_provider._nt.loc[bid]
+                consensus_nt = str(nt_row.get("consensus_nt")) if "consensus_nt" in nt_row and nt_row.get("consensus_nt") is not None else None
+
+            new_nodes_map[bid] = CircuitSubgraphNode(
+                id=str(bid),
+                body_id=bid,
+                cell_type=str(ann_row["type"]) if ann_row is not None and "type" in ann_row and ann_row["type"] is not None else None,
+                instance=str(ann_row["instance"]) if ann_row is not None and "instance" in ann_row and ann_row["instance"] is not None else None,
+                superclass=str(ann_row["superclass"]) if ann_row is not None and "superclass" in ann_row and ann_row["superclass"] is not None else None,
+                consensus_nt=consensus_nt,
+                is_candidate=False,
+                matched_concept_ids=[],
+                evidence_status=None,
+                is_expanded=True,
+            )
+
+        # Build new edges connecting root_id to newly selected nodes or existing nodes
+        all_allowed_nodes = set(req.existing_node_ids) | selected_new_body_ids | {root_id}
+        for u, v, w in discovered_edges:
+            if u in all_allowed_nodes and v in all_allowed_nodes:
+                edge_id = f"{u}_{v}"
+                if edge_id not in new_edges_map:
+                    new_edges_map[edge_id] = CircuitSubgraphEdge(
+                        id=edge_id,
+                        source=u,
+                        target=v,
+                        weight=w,
+                        is_inter_candidate=False,
+                        is_expanded=True,
+                    )
+
+        msg = (
+            f"Expanded neighborhood around neuron {root_id}: added {len(new_nodes_map)} nodes "
+            f"and {len(new_edges_map)} directed edges."
+        )
+        if truncated:
+            msg += f" (Truncated to top {req.max_nodes} partners by weight)."
+
+        return CircuitSubgraphExpansionResponse(
+            root_body_id=root_id,
+            direction=req.direction,
+            new_nodes=list(new_nodes_map.values()),
+            new_edges=list(new_edges_map.values()),
+            truncated=truncated,
+            message=msg,
+        )
+
+    # ── V9: Comparative Circuit Analysis ──────────────────────────────────────
+
+    def compare_investigations(
+        self,
+        req: CircuitComparisonRequest,
+    ) -> CircuitComparisonResult:
+        """
+        Performs authentic comparative analysis between two NeuroQuery investigation results.
+        Computes candidate overlap, directed edge overlap (strictly direction-sensitive),
+        weight deltas, rank shifts, evidence coverage, and compatibility warnings.
+        """
+        a = req.result_a
+        b = req.result_b
+
+        # 1. Query info
+        cids_a = [c.concept_id for c in a.resolved_concepts]
+        cids_b = [c.concept_id for c in b.resolved_concepts]
+
+        info_a = InvestigationComparisonQueryInfo(
+            question=a.question,
+            intent=a.intent,
+            concept_ids=cids_a,
+            dataset_version=a.dataset_version,
+            catalog_version=a.catalog_version,
+        )
+        info_b = InvestigationComparisonQueryInfo(
+            question=b.question,
+            intent=b.intent,
+            concept_ids=cids_b,
+            dataset_version=b.dataset_version,
+            catalog_version=b.catalog_version,
+        )
+
+        # 2. Candidate comparison
+        cand_map_a = {c.body_id: (idx + 1, c) for idx, c in enumerate(a.candidate_neurons)}
+        cand_map_b = {c.body_id: (idx + 1, c) for idx, c in enumerate(b.candidate_neurons)}
+
+        set_cand_a = set(cand_map_a.keys())
+        set_cand_b = set(cand_map_b.keys())
+
+        shared_cand = sorted(set_cand_a & set_cand_b)
+        unique_cand_a = sorted(set_cand_a - set_cand_b)
+        unique_cand_b = sorted(set_cand_b - set_cand_a)
+        union_cand = set_cand_a | set_cand_b
+
+        cand_jaccard = round(len(shared_cand) / len(union_cand), 4) if union_cand else 1.0
+
+        rank_deltas: list[CandidateRankDelta] = []
+        for bid in sorted(union_cand):
+            item_a = cand_map_a.get(bid)
+            item_b = cand_map_b.get(bid)
+            cell_type = (item_a[1].cell_type if item_a else None) or (item_b[1].cell_type if item_b else None)
+            rank_deltas.append(
+                CandidateRankDelta(
+                    body_id=bid,
+                    cell_type=cell_type,
+                    rank_a=item_a[0] if item_a else None,
+                    rank_b=item_b[0] if item_b else None,
+                    score_a=item_a[1].ranking_score if item_a else None,
+                    score_b=item_b[1].ranking_score if item_b else None,
+                    evidence_tier_a=item_a[1].evidence_tier if item_a else None,
+                    evidence_tier_b=item_b[1].evidence_tier if item_b else None,
+                )
+            )
+
+        cand_summary = CandidateComparisonSummary(
+            candidates_a_count=len(set_cand_a),
+            candidates_b_count=len(set_cand_b),
+            shared_candidate_count=len(shared_cand),
+            unique_a_candidate_count=len(unique_cand_a),
+            unique_b_candidate_count=len(unique_cand_b),
+            jaccard_similarity=cand_jaccard,
+            shared_candidate_ids=shared_cand,
+            unique_a_candidate_ids=unique_cand_a,
+            unique_b_candidate_ids=unique_cand_b,
+            rank_deltas=rank_deltas,
+        )
+
+        # 3. Graph comparison (nodes and directed edges)
+        node_ids_a = {n.body_id for n in a.subgraph_nodes}
+        node_ids_b = {n.body_id for n in b.subgraph_nodes}
+        shared_nodes = sorted(node_ids_a & node_ids_b)
+        unique_nodes_a = sorted(node_ids_a - node_ids_b)
+        unique_nodes_b = sorted(node_ids_b - node_ids_a)
+        union_nodes = node_ids_a | node_ids_b
+        node_jaccard = round(len(shared_nodes) / len(union_nodes), 4) if union_nodes else 1.0
+
+        edge_map_a = {f"{e.source}_{e.target}": e for e in a.subgraph_edges}
+        edge_map_b = {f"{e.source}_{e.target}": e for e in b.subgraph_edges}
+        edge_keys_a = set(edge_map_a.keys())
+        edge_keys_b = set(edge_map_b.keys())
+        shared_edge_keys = sorted(edge_keys_a & edge_keys_b)
+        unique_edge_keys_a = sorted(edge_keys_a - edge_keys_b)
+        unique_edge_keys_b = sorted(edge_keys_b - edge_keys_a)
+        union_edges = edge_keys_a | edge_keys_b
+        edge_jaccard = round(len(shared_edge_keys) / len(union_edges), 4) if union_edges else 1.0
+
+        weight_deltas: list[EdgeWeightDelta] = []
+        for ek in shared_edge_keys:
+            ea = edge_map_a[ek]
+            eb = edge_map_b[ek]
+            weight_deltas.append(
+                EdgeWeightDelta(
+                    id=ek,
+                    source=ea.source,
+                    target=ea.target,
+                    weight_a=ea.weight,
+                    weight_b=eb.weight,
+                    delta_weight=eb.weight - ea.weight,
+                )
+            )
+
+        graph_summary = GraphComparisonSummary(
+            nodes_a_count=len(node_ids_a),
+            nodes_b_count=len(node_ids_b),
+            shared_node_count=len(shared_nodes),
+            unique_a_node_count=len(unique_nodes_a),
+            unique_b_node_count=len(unique_nodes_b),
+            node_jaccard_similarity=node_jaccard,
+            shared_node_ids=shared_nodes,
+            unique_a_node_ids=unique_nodes_a,
+            unique_b_node_ids=unique_nodes_b,
+            edges_a_count=len(edge_keys_a),
+            edges_b_count=len(edge_keys_b),
+            shared_edge_count=len(shared_edge_keys),
+            unique_a_edge_count=len(unique_edge_keys_a),
+            unique_b_edge_count=len(unique_edge_keys_b),
+            edge_jaccard_similarity=edge_jaccard,
+            shared_edge_ids=shared_edge_keys,
+            unique_a_edge_ids=unique_edge_keys_a,
+            unique_b_edge_ids=unique_edge_keys_b,
+            weight_deltas=weight_deltas,
+        )
+
+        # 4. Evidence comparison
+        set_cids_a = set(cids_a)
+        set_cids_b = set(cids_b)
+        shared_cids = sorted(set_cids_a & set_cids_b)
+        unique_cids_a = sorted(set_cids_a - set_cids_b)
+        unique_cids_b = sorted(set_cids_b - set_cids_a)
+
+        src_ids_a = {s.source_id for s in a.evidence_sources}
+        src_ids_b = {s.source_id for s in b.evidence_sources}
+        shared_src = sorted(src_ids_a & src_ids_b)
+        unique_src_a = sorted(src_ids_a - src_ids_b)
+        unique_src_b = sorted(src_ids_b - src_ids_a)
+
+        evidence_summary = EvidenceComparisonSummary(
+            concepts_a=sorted(set_cids_a),
+            concepts_b=sorted(set_cids_b),
+            shared_concepts=shared_cids,
+            unique_a_concepts=unique_cids_a,
+            unique_b_concepts=unique_cids_b,
+            sources_a_count=len(src_ids_a),
+            sources_b_count=len(src_ids_b),
+            shared_source_ids=shared_src,
+            unique_a_source_ids=unique_src_a,
+            unique_b_source_ids=unique_src_b,
+        )
+
+        # 5. Scientific compatibility warnings
+        warnings: list[str] = []
+        if a.dataset_version != b.dataset_version:
+            warnings.append(
+                f"Dataset versions differ: '{a.dataset_version}' vs '{b.dataset_version}'. "
+                "Synaptic weight and annotation comparisons may not be strictly like-for-like."
+            )
+        if a.catalog_version != b.catalog_version:
+            warnings.append(
+                f"Knowledge catalog versions differ: '{a.catalog_version}' vs '{b.catalog_version}'. "
+                "Evidence tiers and mapping rules may reflect different catalog releases."
+            )
+        if a.intent != b.intent:
+            warnings.append(
+                f"Investigation intents differ: '{a.intent}' vs '{b.intent}'. "
+                "Subgraphs were constructed under different operational scopes."
+            )
+        if a.ranking_method != b.ranking_method:
+            warnings.append(
+                f"Ranking methods differ: '{a.ranking_method}' vs '{b.ranking_method}'. "
+                "Candidate score comparisons should not be treated as equivalent values."
+            )
+
+        return CircuitComparisonResult(
+            investigation_a=info_a,
+            investigation_b=info_b,
+            candidate_comparison=cand_summary,
+            graph_comparison=graph_summary,
+            evidence_comparison=evidence_summary,
+            compatibility_warnings=warnings,
         )

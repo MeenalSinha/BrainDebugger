@@ -37,6 +37,10 @@ import type {
   CircuitDiscoveryResult,
   InvestigationExecutionRequest,
   InvestigationExecutionRecord,
+  CircuitSubgraphExpansionRequest,
+  CircuitSubgraphExpansionResponse,
+  CircuitComparisonRequest,
+  CircuitComparisonResult,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -277,6 +281,14 @@ export const api = {
 
   getInvestigationExecution(executionId: string, signal?: AbortSignal): Promise<InvestigationExecutionRecord> {
     return get<InvestigationExecutionRecord>(`/api/neuroquery/executions/${encodeURIComponent(executionId)}`, signal);
+  },
+
+  expandCircuitSubgraph(req: CircuitSubgraphExpansionRequest, signal?: AbortSignal): Promise<CircuitSubgraphExpansionResponse> {
+    return post<CircuitSubgraphExpansionResponse>('/api/neuroquery/expand-subgraph', req, signal);
+  },
+
+  compareCircuitInvestigations(req: CircuitComparisonRequest, signal?: AbortSignal): Promise<CircuitComparisonResult> {
+    return post<CircuitComparisonResult>('/api/neuroquery/compare', req, signal);
   },
 };
 
