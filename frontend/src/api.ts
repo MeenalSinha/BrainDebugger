@@ -44,6 +44,23 @@ import type {
   RankingProfile,
   RobustnessAnalysisRequest,
   RobustnessAnalysisResponse,
+  HypothesisSuggestion,
+  HypothesisSuggestRequest,
+  HypothesisRecord,
+  HypothesisCreateRequest,
+  HypothesisUpdateRequest,
+  HypothesisStatusTransitionRequest,
+  HypothesisEvidence,
+  EvidenceCreateRequest,
+  AlternativeExplanation,
+  AlternativeCreateRequest,
+  FollowupStudy,
+  StudyCreateRequest,
+  StudyExecuteRequest,
+  StudyEvaluationResult,
+  ResearchProject,
+  ProjectCreateRequest,
+  ResearchNotebookExport,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -103,6 +120,45 @@ async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promi
           detail = errBody.message;
         }
       }
+    } catch { /* ignore */ }
+    throw new ApiClientError(res.status, detail);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function put<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      if (errBody?.detail?.message) detail = errBody.detail.message;
+      else if (typeof errBody?.detail === 'string') detail = errBody.detail;
+      else if (errBody?.message) detail = errBody.message;
+    } catch { /* ignore */ }
+    throw new ApiClientError(res.status, detail);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function del<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      if (errBody?.detail?.message) detail = errBody.detail.message;
+      else if (typeof errBody?.detail === 'string') detail = errBody.detail;
+      else if (errBody?.message) detail = errBody.message;
     } catch { /* ignore */ }
     throw new ApiClientError(res.status, detail);
   }
@@ -304,6 +360,118 @@ export const api = {
 
   getRobustnessAnalysis(analysisId: string, signal?: AbortSignal): Promise<RobustnessAnalysisResponse> {
     return get<RobustnessAnalysisResponse>(`/api/neuroquery/robustness/${encodeURIComponent(analysisId)}`, signal);
+  },
+
+  // ── V11: Hypothesis Workbench & Research Notebook ─────────────────────────
+
+  suggestHypotheses(req: HypothesisSuggestRequest, signal?: AbortSignal): Promise<HypothesisSuggestion[]> {
+    return post<HypothesisSuggestion[]>('/api/neuroquery/hypotheses/suggest', req, signal);
+  },
+
+  listHypotheses(
+    params?: { project_id?: string; category?: string; status?: string },
+    signal?: AbortSignal
+  ): Promise<HypothesisRecord[]> {
+    const sp = new URLSearchParams();
+    if (params?.project_id) sp.set('project_id', params.project_id);
+    if (params?.category) sp.set('category', params.category);
+    if (params?.status) sp.set('status', params.status);
+    const qs = sp.toString() ? `?${sp.toString()}` : '';
+    return get<HypothesisRecord[]>(`/api/neuroquery/hypotheses${qs}`, signal);
+  },
+
+  createHypothesis(req: HypothesisCreateRequest, signal?: AbortSignal): Promise<HypothesisRecord> {
+    return post<HypothesisRecord>('/api/neuroquery/hypotheses', req, signal);
+  },
+
+  getHypothesis(hypothesisId: string, signal?: AbortSignal): Promise<HypothesisRecord> {
+    return get<HypothesisRecord>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}`, signal);
+  },
+
+  updateHypothesis(hypothesisId: string, req: HypothesisUpdateRequest, signal?: AbortSignal): Promise<HypothesisRecord> {
+    return put<HypothesisRecord>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}`, req, signal);
+  },
+
+  deleteHypothesis(hypothesisId: string, signal?: AbortSignal): Promise<{ status: string; hypothesis_id: string }> {
+    return del<{ status: string; hypothesis_id: string }>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}`, signal);
+  },
+
+  transitionHypothesisStatus(
+    hypothesisId: string,
+    req: HypothesisStatusTransitionRequest,
+    signal?: AbortSignal
+  ): Promise<HypothesisRecord> {
+    return post<HypothesisRecord>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/transition`, req, signal);
+  },
+
+  attachEvidence(hypothesisId: string, req: EvidenceCreateRequest, signal?: AbortSignal): Promise<HypothesisEvidence> {
+    return post<HypothesisEvidence>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/evidence`, req, signal);
+  },
+
+  removeEvidence(hypothesisId: string, evidenceId: string, signal?: AbortSignal): Promise<{ status: string; evidence_id: string }> {
+    return del<{ status: string; evidence_id: string }>(
+      `/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/evidence/${encodeURIComponent(evidenceId)}`,
+      signal
+    );
+  },
+
+  addAlternative(
+    hypothesisId: string,
+    req: AlternativeCreateRequest,
+    signal?: AbortSignal
+  ): Promise<AlternativeExplanation> {
+    return post<AlternativeExplanation>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/alternatives`, req, signal);
+  },
+
+  createFollowupStudy(hypothesisId: string, req: StudyCreateRequest, signal?: AbortSignal): Promise<FollowupStudy> {
+    return post<FollowupStudy>(`/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/studies`, req, signal);
+  },
+
+  executeFollowupStudy(
+    hypothesisId: string,
+    studyId: string,
+    req: StudyExecuteRequest,
+    signal?: AbortSignal
+  ): Promise<StudyEvaluationResult> {
+    return post<StudyEvaluationResult>(
+      `/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/studies/${encodeURIComponent(studyId)}/execute`,
+      req,
+      signal
+    );
+  },
+
+  async getHypothesisMarkdownReport(hypothesisId: string, signal?: AbortSignal): Promise<string> {
+    const res = await fetch(`${BASE}/api/neuroquery/hypotheses/${encodeURIComponent(hypothesisId)}/report`, { signal });
+    if (!res.ok) throw new Error(`Report generation failed: HTTP ${res.status}`);
+    return res.text();
+  },
+
+  listResearchProjects(signal?: AbortSignal): Promise<ResearchProject[]> {
+    return get<ResearchProject[]>('/api/research/projects', signal);
+  },
+
+  createResearchProject(req: ProjectCreateRequest, signal?: AbortSignal): Promise<ResearchProject> {
+    return post<ResearchProject>('/api/research/projects', req, signal);
+  },
+
+  getResearchProject(projectId: string, signal?: AbortSignal): Promise<ResearchProject> {
+    return get<ResearchProject>(`/api/research/projects/${encodeURIComponent(projectId)}`, signal);
+  },
+
+  exportResearchNotebook(projectId?: string, signal?: AbortSignal): Promise<ResearchNotebookExport> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    return get<ResearchNotebookExport>(`/api/research/notebook/export${qs}`, signal);
+  },
+
+  importResearchNotebook(
+    exportData: ResearchNotebookExport,
+    signal?: AbortSignal
+  ): Promise<{ status: string; imported_projects: number; imported_hypotheses: number }> {
+    return post<{ status: string; imported_projects: number; imported_hypotheses: number }>(
+      '/api/research/notebook/import',
+      exportData,
+      signal
+    );
   },
 };
 

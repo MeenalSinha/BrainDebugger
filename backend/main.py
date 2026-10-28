@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import Settings, configure_logging, get_settings
@@ -56,12 +57,30 @@ from backend.models import (
     RankingProfile,
     RobustnessAnalysisRequest,
     RobustnessAnalysisResponse,
+    AlternativeCreateRequest,
+    AlternativeExplanation,
+    EvidenceCreateRequest,
+    FollowupStudy,
+    HypothesisCreateRequest,
+    HypothesisEvidence,
+    HypothesisRecord,
+    HypothesisStatusTransitionRequest,
+    HypothesisSuggestRequest,
+    HypothesisSuggestion,
+    HypothesisUpdateRequest,
+    ProjectCreateRequest,
+    ResearchNotebookExport,
+    ResearchProject,
+    StudyCreateRequest,
+    StudyEvaluationResult,
+    StudyExecuteRequest,
 )
 from backend.perturbation_service import PerturbationService
 from backend.knowledge_service import KnowledgeService
 from backend.query_planner_service import QueryPlannerService
 from backend.circuit_discovery_service import CircuitDiscoveryService
 from backend.robustness_analysis_service import RobustnessAnalysisService
+from backend.hypothesis_service import HypothesisService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -74,12 +93,13 @@ _knowledge_service: Optional[KnowledgeService] = None
 _planner_service: Optional[QueryPlannerService] = None
 _circuit_discovery_service: Optional[CircuitDiscoveryService] = None
 _robustness_service: Optional[RobustnessAnalysisService] = None
+_hypothesis_service: Optional[HypothesisService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service, _robustness_service
+    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service, _robustness_service, _hypothesis_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -109,6 +129,14 @@ async def lifespan(app: FastAPI):
         data_provider=_provider,
         query_planner_service=_planner_service,
         settings=settings,
+    )
+    _hypothesis_service = HypothesisService(
+        circuit_discovery_service=_circuit_discovery_service,
+        robustness_service=_robustness_service,
+        connectome_service=_service,
+        perturbation_service=_perturbation_service,
+        knowledge_service=_knowledge_service,
+        data_provider=_provider,
     )
     logger.info("BrainDebugger ready.")
     yield
@@ -227,6 +255,21 @@ def get_robustness_service() -> RobustnessAnalysisService:
 
 
 RobustnessDep = Annotated[RobustnessAnalysisService, Depends(get_robustness_service)]
+
+
+def get_hypothesis_service() -> HypothesisService:
+    if _hypothesis_service is None or not _provider.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "Hypothesis service is not loaded or connectome dataset is not ready.",
+            },
+        )
+    return _hypothesis_service
+
+
+HypothesisDep = Annotated[HypothesisService, Depends(get_hypothesis_service)]
 
 
 
@@ -1059,3 +1102,345 @@ async def get_robustness_analysis(
             detail={"error": "not_found", "message": f"Robustness analysis '{analysis_id}' not found."},
         )
     return res
+
+
+# ── V11: Evidence-Grounded Hypothesis Workbench & Research Notebook ──────────
+
+@app.post(
+    "/api/neuroquery/hypotheses/suggest",
+    response_model=list[HypothesisSuggestion],
+    summary="Generate data-grounded hypothesis suggestions from discovery or robustness results",
+    tags=["Hypothesis Workbench"],
+)
+async def suggest_hypotheses(
+    req: HypothesisSuggestRequest,
+    hypothesis_svc: HypothesisDep,
+) -> list[HypothesisSuggestion]:
+    """
+    Scans real analysis outputs (robustness sweeps, discovery executions, or comparisons)
+    and deterministically derives structured, cautious hypothesis candidates.
+    """
+    return hypothesis_svc.suggest_hypotheses(req)
+
+
+@app.get(
+    "/api/neuroquery/hypotheses",
+    response_model=list[HypothesisRecord],
+    summary="List all registered computational hypotheses with optional filtering",
+    tags=["Hypothesis Workbench"],
+)
+async def list_hypotheses(
+    hypothesis_svc: HypothesisDep,
+    project_id: Optional[str] = Query(None, description="Filter by research project ID"),
+    category: Optional[str] = Query(None, description="Filter by hypothesis category"),
+    status: Optional[str] = Query(None, description="Filter by lifecycle status"),
+) -> list[HypothesisRecord]:
+    """Retrieves hypotheses stored in the current session or persistent project."""
+    return hypothesis_svc.list_hypotheses(project_id=project_id, category=category, status=status)
+
+
+@app.post(
+    "/api/neuroquery/hypotheses",
+    response_model=HypothesisRecord,
+    status_code=201,
+    summary="Create a new evidence-grounded computational hypothesis",
+    tags=["Hypothesis Workbench"],
+)
+async def create_hypothesis(
+    req: HypothesisCreateRequest,
+    hypothesis_svc: HypothesisDep,
+) -> HypothesisRecord:
+    """Formulates a new hypothesis with initial evidence, alternative biases, and boundary conditions."""
+    try:
+        return hypothesis_svc.create_hypothesis(req)
+    except Exception as exc:
+        logger.exception("Error creating hypothesis: %s", exc)
+        raise HTTPException(status_code=400, detail={"error": "creation_failed", "message": str(exc)})
+
+
+@app.get(
+    "/api/neuroquery/hypotheses/{hypothesis_id}",
+    response_model=HypothesisRecord,
+    summary="Retrieve details and evidence ledger for a specific hypothesis",
+    tags=["Hypothesis Workbench"],
+)
+async def get_hypothesis(
+    hypothesis_id: str,
+    hypothesis_svc: HypothesisDep,
+) -> HypothesisRecord:
+    """Retrieves a single hypothesis record by ID."""
+    hyp = hypothesis_svc.get_hypothesis(hypothesis_id)
+    if not hyp:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+    return hyp
+
+
+@app.put(
+    "/api/neuroquery/hypotheses/{hypothesis_id}",
+    response_model=HypothesisRecord,
+    summary="Update hypothesis statement, metadata, or assumptions",
+    tags=["Hypothesis Workbench"],
+)
+async def update_hypothesis(
+    hypothesis_id: str,
+    req: HypothesisUpdateRequest,
+    hypothesis_svc: HypothesisDep,
+) -> HypothesisRecord:
+    """Updates editable properties of an existing hypothesis."""
+    try:
+        return hypothesis_svc.update_hypothesis(hypothesis_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail={"error": "update_failed", "message": str(exc)})
+
+
+@app.delete(
+    "/api/neuroquery/hypotheses/{hypothesis_id}",
+    summary="Delete a hypothesis from the workbench and project",
+    tags=["Hypothesis Workbench"],
+)
+async def delete_hypothesis(
+    hypothesis_id: str,
+    hypothesis_svc: HypothesisDep,
+) -> dict[str, Any]:
+    """Deletes a hypothesis by ID."""
+    success = hypothesis_svc.delete_hypothesis(hypothesis_id)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+    return {"status": "deleted", "hypothesis_id": hypothesis_id}
+
+
+@app.post(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/transition",
+    response_model=HypothesisRecord,
+    summary="Transition hypothesis status with an audit rationale",
+    tags=["Hypothesis Workbench"],
+)
+async def transition_hypothesis_status(
+    hypothesis_id: str,
+    req: HypothesisStatusTransitionRequest,
+    hypothesis_svc: HypothesisDep,
+) -> HypothesisRecord:
+    """Transitions a hypothesis to a new lifecycle state with documented reason."""
+    try:
+        return hypothesis_svc.transition_hypothesis_status(hypothesis_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+
+
+@app.post(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/evidence",
+    response_model=HypothesisEvidence,
+    status_code=201,
+    summary="Attach an empirical or literature evidence record to a hypothesis",
+    tags=["Hypothesis Workbench"],
+)
+async def attach_evidence(
+    hypothesis_id: str,
+    req: EvidenceCreateRequest,
+    hypothesis_svc: HypothesisDep,
+) -> HypothesisEvidence:
+    """Attaches an explicit evidence record with role (supporting/contradicting/contextual)."""
+    try:
+        return hypothesis_svc.add_evidence(hypothesis_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+
+
+@app.delete(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/evidence/{evidence_id}",
+    summary="Remove an evidence record from a hypothesis",
+    tags=["Hypothesis Workbench"],
+)
+async def remove_evidence(
+    hypothesis_id: str,
+    evidence_id: str,
+    hypothesis_svc: HypothesisDep,
+) -> dict[str, Any]:
+    """Removes an evidence item by ID."""
+    success = hypothesis_svc.remove_evidence(hypothesis_id, evidence_id)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Evidence '{evidence_id}' or hypothesis '{hypothesis_id}' not found."},
+        )
+    return {"status": "deleted", "evidence_id": evidence_id}
+
+
+@app.post(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/alternatives",
+    response_model=AlternativeExplanation,
+    status_code=201,
+    summary="Log a confounding factor or alternative explanation",
+    tags=["Hypothesis Workbench"],
+)
+async def add_alternative(
+    hypothesis_id: str,
+    req: AlternativeCreateRequest,
+    hypothesis_svc: HypothesisDep,
+) -> AlternativeExplanation:
+    """Attaches a methodological or biological confounding factor."""
+    try:
+        return hypothesis_svc.add_alternative(hypothesis_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+
+
+@app.post(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/studies",
+    response_model=FollowupStudy,
+    status_code=201,
+    summary="Register a follow-up computational investigation",
+    tags=["Hypothesis Workbench"],
+)
+async def create_followup_study(
+    hypothesis_id: str,
+    req: StudyCreateRequest,
+    hypothesis_svc: HypothesisDep,
+) -> FollowupStudy:
+    """Plans a testable study with null expectations and quantitative criteria."""
+    try:
+        return hypothesis_svc.create_study(hypothesis_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+
+
+@app.post(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/studies/{study_id}/execute",
+    response_model=StudyEvaluationResult,
+    summary="Execute a planned study and evaluate quantitative outcomes",
+    tags=["Hypothesis Workbench"],
+)
+async def execute_followup_study(
+    hypothesis_id: str,
+    study_id: str,
+    req: StudyExecuteRequest,
+    hypothesis_svc: HypothesisDep,
+) -> StudyEvaluationResult:
+    """Executes the analysis pipeline, scores criteria, and updates hypothesis lifecycle."""
+    try:
+        return await hypothesis_svc.execute_study(hypothesis_id, study_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Study '{study_id}' or hypothesis '{hypothesis_id}' not found."},
+        )
+
+
+@app.get(
+    "/api/neuroquery/hypotheses/{hypothesis_id}/report",
+    response_class=PlainTextResponse,
+    summary="Export formal hypothesis Markdown report",
+    tags=["Hypothesis Workbench"],
+)
+async def get_hypothesis_markdown_report(
+    hypothesis_id: str,
+    hypothesis_svc: HypothesisDep,
+) -> str:
+    """Generates formatted Markdown with statement, evidence ledger, biases, and limitations."""
+    try:
+        return hypothesis_svc.generate_hypothesis_markdown(hypothesis_id)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Hypothesis '{hypothesis_id}' not found."},
+        )
+
+
+# ── V11: Research Notebook Projects & Persistence ─────────────────────────────
+
+@app.get(
+    "/api/research/projects",
+    response_model=list[ResearchProject],
+    summary="List all research projects in the notebook",
+    tags=["Research Notebook"],
+)
+async def list_research_projects(
+    hypothesis_svc: HypothesisDep,
+) -> list[ResearchProject]:
+    """Returns all project workspaces with their timelines and notes."""
+    return hypothesis_svc.list_projects()
+
+
+@app.post(
+    "/api/research/projects",
+    response_model=ResearchProject,
+    status_code=201,
+    summary="Create a new research project workspace",
+    tags=["Research Notebook"],
+)
+async def create_research_project(
+    req: ProjectCreateRequest,
+    hypothesis_svc: HypothesisDep,
+) -> ResearchProject:
+    """Initializes a new project collection."""
+    return hypothesis_svc.create_project(req)
+
+
+@app.get(
+    "/api/research/projects/{project_id}",
+    response_model=ResearchProject,
+    summary="Retrieve a research project by ID",
+    tags=["Research Notebook"],
+)
+async def get_research_project(
+    project_id: str,
+    hypothesis_svc: HypothesisDep,
+) -> ResearchProject:
+    """Retrieves project details, timeline, and associated hypotheses."""
+    proj = hypothesis_svc.get_project(project_id)
+    if not proj:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+    return proj
+
+
+@app.get(
+    "/api/research/notebook/export",
+    response_model=ResearchNotebookExport,
+    summary="Export all projects, hypotheses, and evidence records as versioned JSON",
+    tags=["Research Notebook"],
+)
+async def export_research_notebook(
+    hypothesis_svc: HypothesisDep,
+    project_id: Optional[str] = Query(None, description="Optional project ID to export single project"),
+) -> ResearchNotebookExport:
+    """Exports self-contained reproducible research notebook."""
+    return hypothesis_svc.export_notebook(project_id=project_id)
+
+
+@app.post(
+    "/api/research/notebook/import",
+    summary="Import research projects and hypotheses from versioned JSON",
+    tags=["Research Notebook"],
+)
+async def import_research_notebook(
+    export_data: ResearchNotebookExport,
+    hypothesis_svc: HypothesisDep,
+) -> dict[str, Any]:
+    """Imports validated projects and hypotheses into the workspace."""
+    return hypothesis_svc.import_notebook(export_data)

@@ -7,7 +7,7 @@
  * All neuron data comes from the real MaleCNS v1.0 dataset via the backend API.
  */
 import React, { useCallback, useState } from 'react';
-import { Network, GitBranch, Bug, FlaskConical, BookOpen, Sparkles } from 'lucide-react';
+import { Network, GitBranch, Bug, FlaskConical, BookOpen, Sparkles, Lightbulb, BookMarked } from 'lucide-react';
 import { StatusPill } from './components/StatusPill';
 import { ExplorerPanel } from './components/ExplorerPanel';
 import { ConnectomeView } from './components/ConnectomeView';
@@ -18,6 +18,8 @@ import { NeuralDebugger } from './components/NeuralDebugger';
 import { PerturbationLab } from './components/PerturbationLab';
 import { KnowledgeExplorer } from './components/KnowledgeExplorer';
 import { AskNeuroQuery } from './components/AskNeuroQuery';
+import { HypothesisWorkbench } from './components/HypothesisWorkbench';
+import { ResearchNotebook } from './components/ResearchNotebook';
 import type {
   NeuronSearchResult,
   PathwaySearchResponse,
@@ -26,8 +28,10 @@ import type {
 } from './types';
 
 export default function App() {
-  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger' | 'perturbation' | 'knowledge' | 'neuroquery'>('explorer');
+  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger' | 'perturbation' | 'knowledge' | 'neuroquery' | 'hypotheses' | 'notebook'>('explorer');
   const [selectedBodyId, setSelectedBodyId] = useState<number | null>(null);
+  const [contextExecutionId, setContextExecutionId] = useState<string | null>(null);
+  const [contextRobustnessId, setContextRobustnessId] = useState<string | null>(null);
 
   // Pathway & Cascade state
   const [pathwaySourceId, setPathwaySourceId] = useState<number | null>(null);
@@ -137,6 +141,24 @@ export default function App() {
           >
             <Sparkles size={14} />
             <span>Ask NeuroQuery</span>
+          </button>
+          <button
+            id="btn-nav-hypotheses"
+            className={`btn btn-sm ${workspace === 'hypotheses' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setWorkspace('hypotheses')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Lightbulb size={14} />
+            <span>Hypothesis Workbench</span>
+          </button>
+          <button
+            id="btn-nav-notebook"
+            className={`btn btn-sm ${workspace === 'notebook' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setWorkspace('notebook')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <BookMarked size={14} />
+            <span>Research Notebook</span>
           </button>
         </div>
 
@@ -432,6 +454,62 @@ export default function App() {
               />
             </section>
           </>
+        )}
+
+        {workspace === 'hypotheses' && (
+          <section
+            style={{
+              gridColumn: '1 / 4',
+              position: 'relative',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
+              height: '100%',
+            }}
+            aria-label="Hypothesis Workbench Workspace"
+          >
+            <HypothesisWorkbench
+              initialExecutionId={contextExecutionId}
+              initialRobustnessId={contextRobustnessId}
+              onNavigateToNeuron={(bodyId) => {
+                setSelectedBodyId(bodyId);
+                setWorkspace('explorer');
+              }}
+              onNavigateToPathway={(src, tgt) => {
+                setPathwaySourceId(src);
+                setPathwayTargetId(tgt);
+                setWorkspace('pathway');
+              }}
+              onNavigateToDiscovery={() => {
+                setWorkspace('neuroquery');
+              }}
+            />
+          </section>
+        )}
+
+        {workspace === 'notebook' && (
+          <section
+            style={{
+              gridColumn: '1 / 4',
+              position: 'relative',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
+              height: '100%',
+            }}
+            aria-label="Research Notebook Workspace"
+          >
+            <ResearchNotebook
+              onOpenHypothesis={(hypId) => {
+                setWorkspace('hypotheses');
+              }}
+              onNavigateToWorkbench={() => {
+                setWorkspace('hypotheses');
+              }}
+            />
+          </section>
         )}
       </main>
     </div>

@@ -1108,3 +1108,302 @@ export interface SavedRobustnessAnalysisRecord {
   name: string;
   response: RobustnessAnalysisResponse;
 }
+
+// ── V11: Evidence-Grounded Hypothesis Workbench & Research Notebook ──────────
+
+export type HypothesisCategory =
+  | 'structural_connectivity'
+  | 'candidate_stability'
+  | 'parameter_sensitivity'
+  | 'comparative_circuit'
+  | 'evidence_coverage'
+  | 'pathway_structure';
+
+export type HypothesisStatus =
+  | 'draft'
+  | 'ready_for_testing'
+  | 'under_investigation'
+  | 'supported_by_computational_evidence'
+  | 'contradicted_by_computational_evidence'
+  | 'inconclusive'
+  | 'archived';
+
+export type EvidenceRole = 'supporting' | 'contradicting' | 'contextual';
+
+export type EvidenceType =
+  | 'candidate_stability'
+  | 'edge_survival'
+  | 'pathway_continuity'
+  | 'perturbation_resilience'
+  | 'metric_sensitivity'
+  | 'literature_curation'
+  | 'comparative_overlap'
+  | 'manual_observation'
+  | 'study_outcome';
+
+export interface HypothesisEvidence {
+  evidence_id: string;
+  hypothesis_id: string;
+  role: EvidenceRole | string;
+  evidence_type: EvidenceType | string;
+  summary: string;
+  source_execution_id?: string | null;
+  source_scenario_id?: string | null;
+  source_robustness_id?: string | null;
+  source_manifest_id?: string | null;
+  concept_id?: string | null;
+  body_id?: number | null;
+  edge_pre?: number | null;
+  edge_post?: number | null;
+  metric_name?: string | null;
+  metric_value?: number | null;
+  baseline_value?: number | null;
+  threshold_value?: number | null;
+  source_doi?: string | null;
+  scientific_caveat?: string | null;
+  created_at: string;
+}
+
+export interface AlternativeExplanation {
+  explanation_id: string;
+  title: string;
+  description: string;
+  bias_category:
+    | 'em_reconstruction_bias'
+    | 'threshold_artifact'
+    | 'hub_degree_bias'
+    | 'classification_uncertainty'
+    | 'recurrent_feedback_omission'
+    | 'other'
+    | string;
+  status: 'plausible' | 'tested_and_rejected' | 'partially_supported' | 'untested' | string;
+  linked_evidence_ids?: string[];
+  proposed_tests?: string[];
+}
+
+export interface StatusChangeRecord {
+  from_status: string;
+  to_status: string;
+  reason: string;
+  changed_by: string;
+  timestamp: string;
+}
+
+export interface FollowupStudy {
+  study_id: string;
+  hypothesis_id: string;
+  title: string;
+  analysis_type: 'circuit_discovery' | 'pathway_search' | 'perturbation' | 'comparison' | 'robustness_sweep' | string;
+  objective: string;
+  parameters: Record<string, any>;
+  prerequisites: string[];
+  expected_null_outcome: string;
+  testable_criteria: Array<{
+    metric: string;
+    operator: string;
+    value: number;
+    [key: string]: any;
+  }>;
+  status: 'pending' | 'running' | 'completed' | 'failed' | string;
+  execution_id?: string | null;
+  evaluation_verdict?: 'criteria_met' | 'criteria_failed' | 'inconclusive' | string | null;
+  evaluation_summary?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+}
+
+export interface HypothesisRecord {
+  hypothesis_id: string;
+  project_id?: string | null;
+  title: string;
+  statement: string;
+  category: HypothesisCategory | string;
+  scope?: string | null;
+  rationale?: string | null;
+  linked_execution_ids: string[];
+  linked_robustness_ids: string[];
+  linked_concept_ids: string[];
+  target_neurons: number[];
+  target_edges: number[][]; // [pre, post][]
+  evidence_records: HypothesisEvidence[];
+  alternative_explanations: AlternativeExplanation[];
+  assumptions: string[];
+  limitations: string[];
+  proposed_studies: FollowupStudy[];
+  status: HypothesisStatus | string;
+  status_history: StatusChangeRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HypothesisSuggestion {
+  suggestion_id: string;
+  title: string;
+  statement: string;
+  category: string;
+  rationale: string;
+  source_type: 'robustness' | 'circuit_discovery' | 'comparison' | 'pathway' | string;
+  source_id: string;
+  confidence_score: number;
+  target_neurons: number[];
+  target_edges: number[][];
+  suggested_evidence: Array<Record<string, any>>;
+  suggested_alternatives: Array<Record<string, any>>;
+  suggested_study?: Record<string, any> | null;
+  scientific_caveat: string;
+}
+
+export interface HypothesisSuggestRequest {
+  execution_id?: string | null;
+  robustness_id?: string | null;
+  comparison_id?: string | null;
+  concept_id?: string | null;
+}
+
+export interface HypothesisCreateRequest {
+  title: string;
+  statement: string;
+  category?: string;
+  scope?: string | null;
+  rationale?: string | null;
+  project_id?: string | null;
+  linked_execution_ids?: string[] | null;
+  linked_robustness_ids?: string[] | null;
+  linked_concept_ids?: string[] | null;
+  target_neurons?: number[] | null;
+  target_edges?: number[][] | null;
+  assumptions?: string[] | null;
+  limitations?: string[] | null;
+  initial_evidence?: Array<Record<string, any>> | null;
+  initial_alternatives?: Array<Record<string, any>> | null;
+}
+
+export interface HypothesisUpdateRequest {
+  title?: string;
+  statement?: string;
+  category?: string;
+  scope?: string | null;
+  rationale?: string | null;
+  status?: string;
+  status_change_reason?: string;
+  assumptions?: string[];
+  limitations?: string[];
+  target_neurons?: number[];
+  target_edges?: number[][];
+}
+
+export interface HypothesisStatusTransitionRequest {
+  new_status: string;
+  reason: string;
+}
+
+export interface EvidenceCreateRequest {
+  role?: string;
+  evidence_type?: string;
+  summary: string;
+  source_execution_id?: string | null;
+  source_scenario_id?: string | null;
+  source_robustness_id?: string | null;
+  source_manifest_id?: string | null;
+  concept_id?: string | null;
+  body_id?: number | null;
+  edge_pre?: number | null;
+  edge_post?: number | null;
+  metric_name?: string | null;
+  metric_value?: number | null;
+  baseline_value?: number | null;
+  threshold_value?: number | null;
+  source_doi?: string | null;
+  scientific_caveat?: string | null;
+}
+
+export interface AlternativeCreateRequest {
+  title: string;
+  description: string;
+  bias_category?: string;
+  status?: string;
+  linked_evidence_ids?: string[];
+  proposed_tests?: string[];
+}
+
+export interface StudyCreateRequest {
+  title: string;
+  analysis_type: string;
+  objective: string;
+  parameters?: Record<string, any>;
+  prerequisites?: string[];
+  expected_null_outcome: string;
+  testable_criteria?: Array<{
+    metric: string;
+    operator: string;
+    value: number;
+    [key: string]: any;
+  }>;
+}
+
+export interface StudyExecuteRequest {
+  override_parameters?: Record<string, any> | null;
+}
+
+export interface StudyEvaluationResult {
+  study_id: string;
+  hypothesis_id: string;
+  execution_id: string;
+  verdict: 'criteria_met' | 'criteria_failed' | 'inconclusive' | string;
+  recommended_status: string;
+  criteria_results: Array<{
+    metric: string;
+    operator: string;
+    expected: number;
+    actual?: number | null;
+    passed: boolean;
+  }>;
+  summary: string;
+  scientific_caveat: string;
+}
+
+export interface ResearchTimelineEvent {
+  event_id: string;
+  event_type: 'hypothesis_created' | 'evidence_added' | 'study_executed' | 'status_changed' | 'note_added' | string;
+  timestamp: string;
+  title: string;
+  description: string;
+  entity_id?: string | null;
+  metadata?: Record<string, any>;
+}
+
+export interface ResearchProject {
+  project_id: string;
+  title: string;
+  description: string;
+  objective: string;
+  linked_concept_ids: string[];
+  hypotheses: HypothesisRecord[];
+  timeline: ResearchTimelineEvent[];
+  notes: Array<{
+    note_id: string;
+    title: string;
+    content: string;
+    created_at: string;
+    [key: string]: any;
+  }>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectCreateRequest {
+  title: string;
+  description?: string;
+  objective?: string;
+  linked_concept_ids?: string[];
+}
+
+export interface ResearchNotebookExport {
+  export_version: string;
+  schema_version: string;
+  exported_at: string;
+  dataset_version: string;
+  projects: ResearchProject[];
+  hypotheses: HypothesisRecord[];
+  metadata: Record<string, any>;
+}

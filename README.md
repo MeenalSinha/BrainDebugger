@@ -23,6 +23,7 @@ Instead of inspecting functions and variables, researchers inspect neurons, syna
 - **V8 — NeuroQuery: Evidence-Grounded Neural Circuit Discovery Engine**: Transforms validated investigation plans into reproducible, inspectable neural circuits using real Janelia MaleCNS v1.0 data. Discovers candidate neurons preserving complete V6 provenance, retrieves actual directed connections from contiguous adjacency indexes, constructs bounded directed subgraphs, computes structural metrics, ranks candidates transparently using dual criteria (evidence tier + synaptic connectivity), and renders interactive Cytoscape graphs with 1-click handoffs to Connectome Explorer, Neuron Inspector, Pathway Tracer, Neural Debugger, and Perturbation Lab.
 - **V9 — Interactive Circuit Exploration, Explainability & Comparative Analysis Studio**: Interactive Cytoscape canvas with live neighborhood expansion (+1 hop), explainable inspector with verified citations, directed pathway tracer overlay, narrative trace provenance, dual-investigation comparison, and multi-format exports.
 - **V10 — Circuit Robustness & Sensitivity Analysis Lab**: Parameterized sensitivity experiments over real Janelia MaleCNS v1.0 data. One-Factor-at-a-Time and Bounded Multi-Parameter Grid sweeps for synaptic thresholds, candidate/node caps, and what-if ranking profiles. Calculates inclusion fractions $I(v)$, median ranks, rank variability, top-$k$ retention, direction-sensitive edge stability ($u \to v \neq v \to u$), and structural metric sensitivity ($\Delta\text{Nodes}, \Delta\text{Edges}$). Generates Schema v1.0.0 reproducibility manifests and multi-format exports (JSON, Candidate CSV, Edge CSV, Metrics CSV, Markdown Report).
+- **V11 — Evidence-Grounded Hypothesis Workbench & Reproducible Research Notebook**: Full hypothesis lifecycle management and research notebook. Features a deterministic suggestions engine scanning actual results, typed claims & evidence ledger (supporting/contradicting), explicit alternative explanations & methodological bias accounting, follow-up study planner & quantitative runner with automated criteria evaluation, project collections, Kanban board, immutable chronological research timeline, local-first IndexedDB persistence, Cytoscape evidence relationship map, and versioned JSON export/import.
 
 ---
 
@@ -610,6 +611,68 @@ Version 10 introduces a scientific sensitivity-analysis workflow on top of compl
 - `GET /api/neuroquery/robustness/profiles`: Retrieve available ranking profiles.
 - `POST /api/neuroquery/robustness/analyze`: Run bounded sensitivity analysis on an execution.
 - `GET /api/neuroquery/robustness/{analysis_id}`: Retrieve completed robustness analysis results.
+
+---
+
+## Version 11 — Evidence-Grounded Hypothesis Workbench & Reproducible Research Notebook
+
+Version 11 bridges exploratory graph metrics to cautious, testable scientific hypotheses with full traceability, reproducible follow-up experimentation, and persistent research notebooks.
+
+### 1. Evidence-Grounded Suggestions Engine
+- Automatically scans completed circuit discovery executions and robustness sensitivity analyses.
+- Formulates hypotheses based on deterministic rules:
+  - *Candidate Stability*: Surfaced when candidates maintain $I(v) \ge 0.8$ across 3+ parameter variations.
+  - *Rank Sensitivity*: Surfaced when candidate ordering shifts significantly under different profiles.
+  - *Edge Threshold Survival*: Surfaced when strong direct synapses persist across high weight cutoffs.
+- Pre-attaches relevant evidence items, potential alternative explanations (e.g. `degree_bias`), and explicit scientific caveats.
+
+### 2. Claims & Evidence Ledger Traceability
+- **Typed Evidence Roles**: Explicitly flags each evidence record as `supporting`, `contradicting`, or `contextual`.
+- **Concrete Source Bindings**: Connects evidence items directly to execution IDs, robustness analysis IDs, neuron body IDs, directed edges, and literature DOIs.
+- **Alternative Explanations & Biases**: Documents confounding factors, such as high-degree hub artifacts, threshold filtering biases, and evidence tier biases.
+- **Scientific Caveat Enforcement**: Rigorously distinguishes computational graph survival from biological necessity or dynamic in vivo firing.
+
+### 3. Follow-Up Study Planner & Quantitative Evaluator
+- Translates formal hypotheses into testable follow-up experiments:
+  - `pathway_search`: Tests directed path reachability and connection counts.
+  - `perturbation`: Tests knock-out cascade impact ($\Delta R$, $\Delta H$).
+  - `robustness_sweep`: Tests topological retention across parameter bounds.
+  - `circuit_discovery`: Tests broader circuit context and candidate discovery.
+- **Automated Criteria Evaluator**: Formulates explicit null expectations and testable quantitative criteria (e.g., `path_count >= 1`). Evaluates outcomes against actual connectome runs and recommends lifecycle status transitions.
+
+### 4. 7-Stage Hypothesis Lifecycle
+Controlled state transitions with mandatory reason logging:
+- `draft` $\to$ `ready_for_testing` $\to$ `under_investigation` $\to$ `supported_by_computational_evidence` | `contradicted_by_computational_evidence` | `inconclusive` | `archived`.
+
+### 5. Reproducible Research Notebook & Local-First Persistence
+- **Project Collections**: Group hypotheses and timeline events into distinct workspaces.
+- **Hypothesis Board**: Interactive Kanban board organized by lifecycle status.
+- **Chronological Timeline**: Immutable log recording every hypothesis event, evidence addition, experiment execution, and status transition.
+- **IndexedDB Local Storage**: Durable local-first browser storage (`BrainDebuggerDB`) with automatic localStorage fallback.
+- **Versioned JSON Import/Export**: Self-contained research documents with schema version `1.0.0` and dataset fingerprint `male-cns:v1.0`.
+
+### 6. Evidence Relationship Map
+- High-performance Cytoscape.js visualizer rendering the complete semantic network of hypotheses, target neurons, biological concepts, evidence records, and follow-up studies.
+
+### 7. V11 Endpoints
+- `POST /api/neuroquery/hypotheses/suggest`: Surface evidence-grounded hypothesis suggestions from executions/robustness.
+- `GET /api/neuroquery/hypotheses`: List hypotheses (with optional project, category, status filters).
+- `POST /api/neuroquery/hypotheses`: Formulate a new structured hypothesis.
+- `GET /api/neuroquery/hypotheses/{id}`: Retrieve hypothesis record with full evidence ledger and studies.
+- `PUT /api/neuroquery/hypotheses/{id}`: Update hypothesis statement, category, target entities, or notes.
+- `DELETE /api/neuroquery/hypotheses/{id}`: Delete hypothesis record.
+- `POST /api/neuroquery/hypotheses/{id}/transition`: Transition hypothesis status with audit logging.
+- `POST /api/neuroquery/hypotheses/{id}/evidence`: Attach supporting or contradicting evidence record.
+- `DELETE /api/neuroquery/hypotheses/{id}/evidence/{evidence_id}`: Remove evidence record.
+- `POST /api/neuroquery/hypotheses/{id}/alternatives`: Log alternative explanation or bias factor.
+- `POST /api/neuroquery/hypotheses/{id}/studies`: Plan follow-up study with testable criteria.
+- `POST /api/neuroquery/hypotheses/{id}/studies/{study_id}/execute`: Execute follow-up study and evaluate quantitative outcomes.
+- `GET /api/neuroquery/hypotheses/{id}/report`: Export formal hypothesis Markdown report.
+- `GET /api/research/projects`: List all research project collections.
+- `POST /api/research/projects`: Create new research project.
+- `GET /api/research/projects/{id}`: Get project details with timeline.
+- `GET /api/research/notebook/export`: Export versioned JSON notebook document.
+- `POST /api/research/notebook/import`: Import versioned JSON notebook document.
 
 ---
 

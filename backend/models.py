@@ -1140,3 +1140,299 @@ class RobustnessAnalysisResponse(BaseModel):
     manifest: RobustnessManifest
     stability_summary: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+
+
+# ── V11: Evidence-Grounded Hypothesis Workbench & Research Notebook ──────────
+
+class HypothesisCategory(str, Enum):
+    structural_connectivity = "structural_connectivity"
+    candidate_stability = "candidate_stability"
+    parameter_sensitivity = "parameter_sensitivity"
+    comparative_circuit = "comparative_circuit"
+    evidence_coverage = "evidence_coverage"
+    pathway_structure = "pathway_structure"
+
+
+class HypothesisStatus(str, Enum):
+    draft = "draft"
+    ready_for_testing = "ready_for_testing"
+    under_investigation = "under_investigation"
+    supported_by_computational_evidence = "supported_by_computational_evidence"
+    contradicted_by_computational_evidence = "contradicted_by_computational_evidence"
+    inconclusive = "inconclusive"
+    archived = "archived"
+
+
+class EvidenceRole(str, Enum):
+    supporting = "supporting"
+    contradicting = "contradicting"
+    contextual = "contextual"
+
+
+class EvidenceType(str, Enum):
+    candidate_stability = "candidate_stability"
+    edge_survival = "edge_survival"
+    pathway_continuity = "pathway_continuity"
+    perturbation_resilience = "perturbation_resilience"
+    metric_sensitivity = "metric_sensitivity"
+    literature_curation = "literature_curation"
+    comparative_overlap = "comparative_overlap"
+    manual_observation = "manual_observation"
+
+
+class HypothesisEvidence(BaseModel):
+    """An empirical or curated evidence record linked to a computational hypothesis."""
+    evidence_id: str
+    hypothesis_id: str
+    role: str = "supporting"  # "supporting" | "contradicting" | "contextual"
+    evidence_type: str = "candidate_stability"
+    summary: str
+    source_execution_id: Optional[str] = None
+    source_scenario_id: Optional[str] = None
+    source_robustness_id: Optional[str] = None
+    source_manifest_id: Optional[str] = None
+    concept_id: Optional[str] = None
+    body_id: Optional[int] = None
+    edge_pre: Optional[int] = None
+    edge_post: Optional[int] = None
+    metric_name: Optional[str] = None
+    metric_value: Optional[float] = None
+    baseline_value: Optional[float] = None
+    threshold_value: Optional[float] = None
+    source_doi: Optional[str] = None
+    scientific_caveat: Optional[str] = None
+    created_at: str
+
+
+class AlternativeExplanation(BaseModel):
+    """A confounding factor, methodological artifact, or alternative biological interpretation."""
+    explanation_id: str
+    title: str
+    description: str
+    bias_category: str = "threshold_artifact"  # "em_reconstruction_bias" | "threshold_artifact" | "hub_degree_bias" | "classification_uncertainty" | "recurrent_feedback_omission" | "other"
+    status: str = "plausible"  # "plausible" | "tested_and_rejected" | "partially_supported" | "untested"
+    linked_evidence_ids: list[str] = Field(default_factory=list)
+    proposed_tests: list[str] = Field(default_factory=list)
+
+
+class StatusChangeRecord(BaseModel):
+    """Audit entry recording a hypothesis status transition."""
+    from_status: str
+    to_status: str
+    reason: str
+    changed_by: str = "system"
+    timestamp: str
+
+
+class FollowupStudy(BaseModel):
+    """A concrete computational study designed to test a hypothesis."""
+    study_id: str
+    hypothesis_id: str
+    title: str
+    analysis_type: str  # "circuit_discovery" | "pathway_search" | "perturbation" | "comparison" | "robustness_sweep"
+    objective: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    prerequisites: list[str] = Field(default_factory=list)
+    expected_null_outcome: str
+    testable_criteria: list[dict[str, Any]] = Field(default_factory=list)
+    status: str = "pending"  # "pending" | "running" | "completed" | "failed"
+    execution_id: Optional[str] = None
+    evaluation_verdict: Optional[str] = None  # "criteria_met" | "criteria_failed" | "inconclusive"
+    evaluation_summary: Optional[str] = None
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+class HypothesisRecord(BaseModel):
+    """A formal, cautious, evidence-grounded computational hypothesis."""
+    hypothesis_id: str
+    project_id: Optional[str] = None
+    title: str
+    statement: str
+    category: str = "structural_connectivity"
+    scope: Optional[str] = None
+    rationale: Optional[str] = None
+    linked_execution_ids: list[str] = Field(default_factory=list)
+    linked_robustness_ids: list[str] = Field(default_factory=list)
+    linked_concept_ids: list[str] = Field(default_factory=list)
+    target_neurons: list[int] = Field(default_factory=list)
+    target_edges: list[list[int]] = Field(default_factory=list)
+    evidence_records: list[HypothesisEvidence] = Field(default_factory=list)
+    alternative_explanations: list[AlternativeExplanation] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    proposed_studies: list[FollowupStudy] = Field(default_factory=list)
+    status: str = "draft"
+    status_history: list[StatusChangeRecord] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class HypothesisSuggestion(BaseModel):
+    """A computationally grounded hypothesis suggestion surfaced from analysis findings."""
+    suggestion_id: str
+    title: str
+    statement: str
+    category: str
+    rationale: str
+    source_type: str  # "robustness" | "circuit_discovery" | "comparison" | "pathway"
+    source_id: str
+    confidence_score: float
+    target_neurons: list[int] = Field(default_factory=list)
+    target_edges: list[list[int]] = Field(default_factory=list)
+    suggested_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    suggested_alternatives: list[dict[str, Any]] = Field(default_factory=list)
+    suggested_study: Optional[dict[str, Any]] = None
+    scientific_caveat: str
+
+
+class HypothesisSuggestRequest(BaseModel):
+    """Request parameters for generating data-grounded hypothesis suggestions."""
+    execution_id: Optional[str] = None
+    robustness_id: Optional[str] = None
+    comparison_id: Optional[str] = None
+    concept_id: Optional[str] = None
+
+
+class HypothesisCreateRequest(BaseModel):
+    """User request to create a new formal hypothesis."""
+    title: str
+    statement: str
+    category: str = "structural_connectivity"
+    scope: Optional[str] = None
+    rationale: Optional[str] = None
+    project_id: Optional[str] = None
+    linked_execution_ids: Optional[list[str]] = None
+    linked_robustness_ids: Optional[list[str]] = None
+    linked_concept_ids: Optional[list[str]] = None
+    target_neurons: Optional[list[int]] = None
+    target_edges: Optional[list[list[int]]] = None
+    assumptions: Optional[list[str]] = None
+    limitations: Optional[list[str]] = None
+    initial_evidence: Optional[list[dict[str, Any]]] = None
+    initial_alternatives: Optional[list[dict[str, Any]]] = None
+
+
+class HypothesisUpdateRequest(BaseModel):
+    """User request to update an existing hypothesis."""
+    title: Optional[str] = None
+    statement: Optional[str] = None
+    category: Optional[str] = None
+    scope: Optional[str] = None
+    rationale: Optional[str] = None
+    status: Optional[str] = None
+    status_change_reason: Optional[str] = None
+    assumptions: Optional[list[str]] = None
+    limitations: Optional[list[str]] = None
+    target_neurons: Optional[list[int]] = None
+    target_edges: Optional[list[list[int]]] = None
+
+
+class HypothesisStatusTransitionRequest(BaseModel):
+    """Request to transition a hypothesis between controlled lifecycle states."""
+    new_status: str
+    reason: str
+
+
+class EvidenceCreateRequest(BaseModel):
+    """Request to attach a new evidence record to a hypothesis."""
+    role: str = "supporting"
+    evidence_type: str = "candidate_stability"
+    summary: str
+    source_execution_id: Optional[str] = None
+    source_scenario_id: Optional[str] = None
+    source_robustness_id: Optional[str] = None
+    source_manifest_id: Optional[str] = None
+    concept_id: Optional[str] = None
+    body_id: Optional[int] = None
+    edge_pre: Optional[int] = None
+    edge_post: Optional[int] = None
+    metric_name: Optional[str] = None
+    metric_value: Optional[float] = None
+    baseline_value: Optional[float] = None
+    threshold_value: Optional[float] = None
+    source_doi: Optional[str] = None
+    scientific_caveat: Optional[str] = None
+
+
+class AlternativeCreateRequest(BaseModel):
+    """Request to add a confounding factor or alternative explanation."""
+    title: str
+    description: str
+    bias_category: str = "threshold_artifact"
+    status: str = "plausible"
+    linked_evidence_ids: Optional[list[str]] = None
+    proposed_tests: Optional[list[str]] = None
+
+
+class StudyCreateRequest(BaseModel):
+    """Request to register a follow-up computational study."""
+    title: str
+    analysis_type: str
+    objective: str
+    parameters: Optional[dict[str, Any]] = None
+    prerequisites: Optional[list[str]] = None
+    expected_null_outcome: str
+    testable_criteria: Optional[list[dict[str, Any]]] = None
+
+
+class StudyExecuteRequest(BaseModel):
+    """Request to execute a planned follow-up computational study."""
+    override_parameters: Optional[dict[str, Any]] = None
+
+
+class StudyEvaluationResult(BaseModel):
+    """Outcome of testing a hypothesis study against predefined quantitative criteria."""
+    study_id: str
+    hypothesis_id: str
+    execution_id: str
+    verdict: str  # "criteria_met" | "criteria_failed" | "inconclusive"
+    recommended_status: str
+    criteria_results: list[dict[str, Any]] = Field(default_factory=list)
+    summary: str
+    scientific_caveat: str
+
+
+class ResearchTimelineEvent(BaseModel):
+    """A milestone event in the research notebook timeline."""
+    event_id: str
+    event_type: str  # "hypothesis_created" | "evidence_added" | "study_executed" | "status_changed" | "note_added"
+    timestamp: str
+    title: str
+    description: str
+    entity_id: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchProject(BaseModel):
+    """A research project grouping hypotheses, evidence, timeline, and notebook notes."""
+    project_id: str
+    title: str
+    description: str
+    objective: str
+    linked_concept_ids: list[str] = Field(default_factory=list)
+    hypotheses: list[HypothesisRecord] = Field(default_factory=list)
+    timeline: list[ResearchTimelineEvent] = Field(default_factory=list)
+    notes: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class ProjectCreateRequest(BaseModel):
+    """Request to create a research project workspace."""
+    title: str
+    description: Optional[str] = ""
+    objective: Optional[str] = ""
+    linked_concept_ids: Optional[list[str]] = None
+
+
+class ResearchNotebookExport(BaseModel):
+    """Self-contained versioned export of all research projects and hypotheses."""
+    export_version: str = "1.0.0"
+    schema_version: str = "1.0.0"
+    exported_at: str
+    dataset_version: str = "male-cns:v1.0"
+    projects: list[ResearchProject] = Field(default_factory=list)
+    hypotheses: list[HypothesisRecord] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+

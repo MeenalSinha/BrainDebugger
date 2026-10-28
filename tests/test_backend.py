@@ -2418,6 +2418,385 @@ class TestV10RobustnessAnalysis:
         assert retrieved.analysis_id == res.analysis_id
 
 
+# ── V11: Hypothesis Workbench & Research Notebook Unit Tests ─────────────────
+
+class TestV11HypothesisWorkbench:
+    """Unit tests for hypothesis creation, suggestions, evidence ledger, studies, and notebook persistence."""
+
+    def _make_services(self):
+        import pandas as pd
+        from backend.config import Settings
+        from backend.data_provider import LocalFeatherProvider
+        from backend.service import ConnectomeService
+        from backend.perturbation_service import PerturbationService
+        from backend.knowledge_service import KnowledgeService
+        from backend.query_planner_service import QueryPlannerService
+        from backend.circuit_discovery_service import CircuitDiscoveryService
+        from backend.robustness_analysis_service import RobustnessAnalysisService
+        from backend.hypothesis_service import HypothesisService
+        from backend.llm_provider import MockLLMProvider
+
+        # Mock annotations
+        ann_df = pd.DataFrame([
+            {"bodyId": 10001, "body_id": 10001, "type": "DNp01", "instance": "DNp01_R", "superclass": "descending", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 10002, "body_id": 10002, "type": "GF", "instance": "GF_L", "superclass": "descending", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 800146, "body_id": 800146, "type": "TTMn", "instance": "TTMn_R", "superclass": "motor", "status": "Traced", "consensus_nt": "glutamate"},
+            {"bodyId": 20001, "body_id": 20001, "type": "T4a", "instance": "T4a_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+            {"bodyId": 20002, "body_id": 20002, "type": "T5a", "instance": "T5a_R", "superclass": "visual", "status": "Traced", "consensus_nt": "acetylcholine"},
+        ]).set_index("bodyId", drop=False)
+
+        # Mock weights
+        wt_df = pd.DataFrame([
+            {"body_pre": 10001, "body_post": 800146, "weight": 70, "type_pre": "DNp01", "type_post": "TTMn"},
+            {"body_pre": 10002, "body_post": 800146, "weight": 120, "type_pre": "GF", "type_post": "TTMn"},
+            {"body_pre": 20001, "body_post": 20002, "weight": 45, "type_pre": "T4a", "type_post": "T5a"},
+            {"body_pre": 10001, "body_post": 10002, "weight": 15, "type_pre": "DNp01", "type_post": "GF"},
+        ])
+
+        p = LocalFeatherProvider(Path("data"))
+        p._annotations = ann_df
+        p._weights = wt_df
+        p._nt = pd.DataFrame()
+        p._stats = pd.DataFrame()
+        p._loaded = True
+
+        settings = Settings()
+        svc = ConnectomeService(p, settings)
+        pert_svc = PerturbationService(p)
+        ks = KnowledgeService(p, knowledge_dir="data/knowledge")
+        llm = MockLLMProvider()
+        planner = QueryPlannerService(ks, p, settings, llm_provider=llm)
+        cds = CircuitDiscoveryService(ks, p, svc, pert_svc, planner, settings)
+        ras = RobustnessAnalysisService(cds, ks, p, planner, settings)
+        hs = HypothesisService(cds, ras, svc, pert_svc, ks, p)
+
+        return p, ks, cds, ras, planner, hs
+
+    def test_hypothesis_service_initialization(self):
+        _, _, _, _, _, hs = self._make_services()
+        projects = hs.list_projects()
+        assert len(projects) >= 1
+        assert projects[0].project_id == "proj-default"
+        assert len(projects[0].timeline) >= 1
+        assert len(hs.list_hypotheses()) == 0
+
+    def test_create_hypothesis(self):
+        from backend.models import HypothesisCreateRequest, HypothesisStatus
+        _, _, _, _, _, hs = self._make_services()
+
+        req = HypothesisCreateRequest(
+            title="DNp01 Mediates Escape Motor Activation",
+            statement="Neuron #10001 (DNp01) reliably drives motor output via strong direct synapse to TTMn #800146.",
+            category="structural_connectivity",
+            target_neurons=[10001, 800146],
+            target_edges=[[10001, 800146]],
+            rationale="Identified direct weight=70 connection in MaleCNS v1.0.",
+        )
+
+        hyp = hs.create_hypothesis(req)
+        assert hyp.hypothesis_id.startswith("hyp-")
+        assert hyp.title == "DNp01 Mediates Escape Motor Activation"
+        assert hyp.status == HypothesisStatus.draft.value
+        assert len(hyp.target_neurons) == 2
+        assert len(hyp.alternative_explanations) >= 2
+        assert any("Computational Boundary" in lim for lim in hyp.limitations)
+        assert len(hyp.status_history) >= 1
+
+        # Retrieval by ID
+        fetched = hs.get_hypothesis(hyp.hypothesis_id)
+        assert fetched is not None
+        assert fetched.hypothesis_id == hyp.hypothesis_id
+
+    def test_deterministic_suggestions_from_robustness(self):
+        from backend.models import (
+            CandidateStabilityItem,
+            EdgeStabilityItem,
+            HypothesisSuggestRequest,
+            RobustnessAnalysisResponse,
+            RobustnessManifest,
+            RobustnessScenarioSummary,
+        )
+        _, _, _, ras, _, hs = self._make_services()
+
+        # Seed mock robustness analysis
+        mock_analysis_id = "robustness-mock-123"
+        mock_rob = RobustnessAnalysisResponse(
+            analysis_id=mock_analysis_id,
+            baseline_execution_id="exec-base-1",
+            baseline_summary=RobustnessScenarioSummary(
+                scenario_id="sc-0",
+                is_baseline=True,
+                parameter_label="Baseline",
+                min_edge_weight=10,
+                max_subgraph_nodes=50,
+                max_candidates=10,
+                ranking_profile=ras.get_available_profiles()[0],
+                candidate_count=5,
+                node_count=20,
+                edge_count=30,
+            ),
+            candidate_stability=[
+                CandidateStabilityItem(
+                    body_id=10001,
+                    cell_type="DNp01",
+                    evidence_tier="tier_1",
+                    in_baseline=True,
+                    total_scenarios=5,
+                    inclusion_count=5,
+                    inclusion_fraction=1.0,
+                    min_rank=1,
+                    max_rank=1,
+                    median_rank=1.0,
+                    rank_spread=0,
+                    top_k_retained=True,
+                ),
+                CandidateStabilityItem(
+                    body_id=20002,
+                    cell_type="T5a",
+                    evidence_tier="tier_2",
+                    in_baseline=True,
+                    total_scenarios=5,
+                    inclusion_count=1,
+                    inclusion_fraction=0.2,
+                    min_rank=3,
+                    max_rank=8,
+                    median_rank=5.5,
+                    rank_spread=5,
+                    top_k_retained=False,
+                ),
+            ],
+            edge_stability=[
+                EdgeStabilityItem(
+                    edge_id="10001_800146",
+                    source=10001,
+                    target=800146,
+                    in_baseline=True,
+                    source_body_id=10001,
+                    target_body_id=800146,
+                    weight=70,
+                    inclusion_count=5,
+                    total_scenarios=5,
+                    inclusion_fraction=1.0,
+                    survives_strict_threshold=True,
+                )
+            ],
+            manifest=RobustnessManifest(
+                analysis_id=mock_analysis_id,
+                baseline_execution_id="exec-base-1",
+                baseline_plan_id="plan-base-1",
+                research_question="How does escape initiate?",
+                dataset_version="male-cns:v1.0",
+                catalog_version="1.0.0",
+                ranking_formula_version="v10.0",
+                scenario_strategy="one_factor",
+                parameter_grid=["min_edge_weights=[10, 20]"],
+                requested_scenarios=5,
+                completed_scenarios=5,
+                failed_scenarios=0,
+                created_at="2026-10-28T12:00:00Z",
+                execution_duration_total_ms=1200.0,
+                scientific_limitations=["Static connectivity."],
+            ),
+            stability_summary={},
+            warnings=[],
+        )
+        ras._analyses[mock_analysis_id] = mock_rob
+
+        # Generate suggestions
+        suggestions = hs.suggest_hypotheses(HypothesisSuggestRequest(robustness_id=mock_analysis_id))
+        assert len(suggestions) >= 2
+
+        # 1. High stability suggestion for DNp01
+        stable_sug = next((s for s in suggestions if 10001 in s.target_neurons), None)
+        assert stable_sug is not None
+        assert "DNp01" in stable_sug.title
+        assert "bottleneck" in stable_sug.title.lower() or "structural" in stable_sug.title.lower()
+        assert stable_sug.confidence_score >= 0.9
+        assert len(stable_sug.suggested_evidence) >= 1
+        assert stable_sug.suggested_study is not None
+
+        # 2. Fragile suggestion for T5a
+        frag_sug = next((s for s in suggestions if 20002 in s.target_neurons), None)
+        assert frag_sug is not None
+        assert "T5a" in frag_sug.title
+        assert "artifact" in frag_sug.title.lower() or "threshold" in frag_sug.title.lower()
+        assert frag_sug.suggested_study is not None
+
+    def test_attach_evidence_supporting_and_contradicting(self):
+        from backend.models import EvidenceCreateRequest, HypothesisCreateRequest
+        _, _, _, _, _, hs = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Test Hypothesis",
+            statement="Neuron #10001 connects to #800146.",
+        ))
+
+        # Add supporting evidence
+        ev_sup = hs.add_evidence(hyp.hypothesis_id, EvidenceCreateRequest(
+            role="supporting",
+            evidence_type="edge_survival",
+            summary="Direct synapse weight=70 confirmed in MaleCNS.",
+            edge_pre=10001,
+            edge_post=800146,
+            metric_name="synaptic_weight",
+            metric_value=70.0,
+        ))
+        assert ev_sup.evidence_id.startswith("ev-")
+        assert ev_sup.role == "supporting"
+
+        # Add contradicting evidence
+        ev_contra = hs.add_evidence(hyp.hypothesis_id, EvidenceCreateRequest(
+            role="contradicting",
+            evidence_type="candidate_stability",
+            summary="Candidate drops out under strict 100 synapse threshold.",
+            metric_name="inclusion_fraction",
+            metric_value=0.0,
+        ))
+        assert ev_contra.role == "contradicting"
+
+        # Verify hypothesis contains both
+        updated = hs.get_hypothesis(hyp.hypothesis_id)
+        assert len(updated.evidence_records) == 2
+
+        # Test evidence removal
+        deleted = hs.remove_evidence(hyp.hypothesis_id, ev_contra.evidence_id)
+        assert deleted is True
+        assert len(hs.get_hypothesis(hyp.hypothesis_id).evidence_records) == 1
+
+    def test_alternative_explanations_bias_tracking(self):
+        from backend.models import AlternativeCreateRequest, HypothesisCreateRequest
+        _, _, _, _, _, hs = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Escape Hub Centrality",
+            statement="Neuron #10001 serves as the central hub.",
+        ))
+
+        alt = hs.add_alternative(hyp.hypothesis_id, AlternativeCreateRequest(
+            title="Arborization Volume Bias",
+            description="Broad dendritic field accumulates random axo-dendritic contacts.",
+            bias_category="hub_degree_bias",
+            status="plausible",
+        ))
+
+        assert alt.explanation_id.startswith("alt-")
+        assert alt.bias_category == "hub_degree_bias"
+
+        updated = hs.get_hypothesis(hyp.hypothesis_id)
+        assert any(a.title == "Arborization Volume Bias" for a in updated.alternative_explanations)
+
+    @pytest.mark.asyncio
+    async def test_followup_study_lifecycle_and_evaluation(self):
+        from backend.models import HypothesisCreateRequest, HypothesisStatus, StudyCreateRequest, StudyExecuteRequest
+        _, _, _, _, _, hs = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Pathway Verification Hypothesis",
+            statement="A multi-hop directed pathway exists from descending neuron #10001 to motor neuron #800146.",
+            target_neurons=[10001, 800146],
+        ))
+        assert hyp.status == HypothesisStatus.draft.value
+
+        # Register follow-up study
+        study = hs.create_study(hyp.hypothesis_id, StudyCreateRequest(
+            title="Direct Structural Pathway Search",
+            analysis_type="pathway_search",
+            objective="Confirm directed structural continuity from #10001 to #800146.",
+            expected_null_outcome="No directed route exists.",
+            testable_criteria=[{"metric": "path_count", "operator": ">=", "value": 1}],
+        ))
+        assert study.study_id.startswith("study-")
+        assert study.status == "pending"
+
+        # Hypothesis status promotes to ready_for_testing
+        hyp_after_study = hs.get_hypothesis(hyp.hypothesis_id)
+        assert hyp_after_study.status == HypothesisStatus.ready_for_testing.value
+
+        # Execute study
+        eval_res = await hs.execute_study(hyp.hypothesis_id, study.study_id, StudyExecuteRequest())
+        assert eval_res.verdict == "criteria_met"
+        assert eval_res.recommended_status == HypothesisStatus.supported_by_computational_evidence.value
+        assert len(eval_res.criteria_results) >= 1
+        assert eval_res.criteria_results[0]["passed"] is True
+
+        # Verify hypothesis status updated to supported
+        hyp_final = hs.get_hypothesis(hyp.hypothesis_id)
+        assert hyp_final.status == HypothesisStatus.supported_by_computational_evidence.value
+        assert any(e.evidence_type == "study_outcome" for e in hyp_final.evidence_records)
+
+    def test_hypothesis_status_transitions_with_audit_trail(self):
+        from backend.models import HypothesisCreateRequest, HypothesisStatus, HypothesisStatusTransitionRequest
+        _, _, _, _, _, hs = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Lifecycle Test Hypothesis",
+            statement="Testing state transitions.",
+        ))
+        assert hyp.status == HypothesisStatus.draft.value
+
+        # Transition to under_investigation
+        hs.transition_hypothesis_status(hyp.hypothesis_id, HypothesisStatusTransitionRequest(
+            new_status=HypothesisStatus.under_investigation.value,
+            reason="Active exploratory analyses initiated in workbench.",
+        ))
+
+        # Transition to inconclusive
+        hs.transition_hypothesis_status(hyp.hypothesis_id, HypothesisStatusTransitionRequest(
+            new_status=HypothesisStatus.inconclusive.value,
+            reason="Empirical observations produced conflicting pathway results.",
+        ))
+
+        updated = hs.get_hypothesis(hyp.hypothesis_id)
+        assert updated.status == HypothesisStatus.inconclusive.value
+        assert len(updated.status_history) == 3
+        assert updated.status_history[-1].from_status == HypothesisStatus.under_investigation.value
+        assert updated.status_history[-1].to_status == HypothesisStatus.inconclusive.value
+
+    def test_notebook_export_and_import_schema(self):
+        from backend.models import HypothesisCreateRequest
+        _, _, _, _, _, hs = self._make_services()
+
+        hs.create_hypothesis(HypothesisCreateRequest(
+            title="Export Test Hypothesis",
+            statement="Checking schema 1.0.0 roundtrip.",
+        ))
+
+        export_doc = hs.export_notebook()
+        assert export_doc.export_version == "1.0.0"
+        assert export_doc.schema_version == "1.0.0"
+        assert len(export_doc.projects) >= 1
+        assert len(export_doc.hypotheses) >= 1
+
+        # Test import into a fresh service
+        _, _, _, _, _, fresh_hs = self._make_services()
+        fresh_hs._hypotheses.clear()
+        import_res = fresh_hs.import_notebook(export_doc)
+
+        assert import_res["status"] == "success"
+        assert import_res["imported_hypotheses"] >= 1
+        assert len(fresh_hs.list_hypotheses()) >= 1
+
+    def test_hypothesis_markdown_report_generation(self):
+        from backend.models import HypothesisCreateRequest
+        _, _, _, _, _, hs = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Visual Motion Divergence",
+            statement="T4a and T5a mediate direction-selective motion processing.",
+            target_neurons=[20001, 20002],
+        ))
+
+        report_md = hs.generate_hypothesis_markdown(hyp.hypothesis_id)
+        assert "# Computational Hypothesis Report" in report_md
+        assert hyp.hypothesis_id in report_md
+        assert "Formal Scientific Statement" in report_md
+        assert "Visual Motion Divergence" in report_md
+        assert "Target Connectome Entities" in report_md
+        assert "#20001" in report_md
+        assert "Evidence Ledger" in report_md
+        assert "Boundary Conditions" in report_md
+
+
 
 
 
