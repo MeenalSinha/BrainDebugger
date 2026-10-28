@@ -40,9 +40,16 @@ from backend.models import (
     ConceptCandidateNeuron,
     ConceptDetailResponse,
     KnowledgeValidationReport,
+    IntentType,
+    InvestigationPlan,
+    PlanGenerationRequest,
+    PlanValidationRequest,
+    PlanValidationResponse,
+    NeuroQueryConfigResponse,
 )
 from backend.perturbation_service import PerturbationService
 from backend.knowledge_service import KnowledgeService
+from backend.query_planner_service import QueryPlannerService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -52,12 +59,13 @@ _provider: Optional[LocalFeatherProvider] = None
 _service: Optional[ConnectomeService] = None
 _perturbation_service: Optional[PerturbationService] = None
 _knowledge_service: Optional[KnowledgeService] = None
+_planner_service: Optional[QueryPlannerService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service, _perturbation_service, _knowledge_service
+    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -72,6 +80,7 @@ async def lifespan(app: FastAPI):
     _service = ConnectomeService(_provider, settings)
     _perturbation_service = PerturbationService(_provider)
     _knowledge_service = KnowledgeService(_provider)
+    _planner_service = QueryPlannerService(_knowledge_service, _provider, settings)
     logger.info("BrainDebugger ready.")
     yield
     logger.info("BrainDebugger shutting down.")
@@ -91,7 +100,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -144,6 +153,21 @@ def get_knowledge_service() -> KnowledgeService:
 
 
 KnowledgeDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
+
+
+def get_planner_service() -> QueryPlannerService:
+    if _planner_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "NeuroQuery planner service is not loaded or not ready.",
+            },
+        )
+    return _planner_service
+
+
+PlannerDep = Annotated[QueryPlannerService, Depends(get_planner_service)]
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -662,5 +686,141 @@ async def audit_knowledge_catalog(
 ) -> KnowledgeValidationReport:
     """Performs an automated audit of the knowledge catalog: reference integrity and dataset compatibility."""
     return knowledge_svc.validate_catalog()
+
+
+# ── V7: NeuroQuery Natural-Language Planning Endpoints ─────────────────────────
+
+@app.post(
+    "/api/neuroquery/plan",
+    response_model=InvestigationPlan,
+    summary="Translate natural-language question into structured investigation plan",
+    tags=["NeuroQuery Natural-Language Planner"],
+)
+async def generate_investigation_plan(
+    req: PlanGenerationRequest,
+    planner_svc: PlannerDep,
+) -> InvestigationPlan:
+    """
+    Translates a user question into a validated, evidence-grounded investigation plan.
+    Does NOT execute arbitrary graph queries or claim circuits are discovered (V8 boundary).
+    """
+    try:
+        return await planner_svc.generate_plan(req)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_request", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Error generating plan: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "plan_generation_failed", "message": f"Planning error: {exc}"},
+        )
+
+
+@app.post(
+    "/api/neuroquery/validate",
+    response_model=PlanValidationResponse,
+    summary="Validate candidate investigation plan against catalog and constraints",
+    tags=["NeuroQuery Natural-Language Planner"],
+)
+async def validate_investigation_plan(
+    req: PlanValidationRequest,
+    planner_svc: PlannerDep,
+) -> PlanValidationResponse:
+    """
+    Validates a structured investigation plan against the V6 concept catalog,
+    supported-investigation registry, parameter ranges, and MaleCNS v1.0 dataset.
+    """
+    return planner_svc.validate_plan(req.plan)
+
+
+@app.get(
+    "/api/neuroquery/intents",
+    response_model=list[dict[str, str]],
+    summary="List supported NeuroQuery intent taxonomy",
+    tags=["NeuroQuery Natural-Language Planner"],
+)
+async def list_neuroquery_intents() -> list[dict[str, str]]:
+    """Returns the controlled taxonomy of supported and classified intent types."""
+    return [
+        {
+            "intent": IntentType.circuit_discovery.value,
+            "display_name": "Circuit Discovery",
+            "description": "Identify neuron populations, synaptic connectivity, and functional routes for a biological process (V7 plans; V8 executes).",
+            "status": "planned_v8",
+        },
+        {
+            "intent": IntentType.inspect_neuron.value,
+            "display_name": "Neuron Inspection",
+            "description": "Inspect anatomical metadata, synaptic partners, and neurotransmitters for a specific neuron or type.",
+            "status": "supported",
+        },
+        {
+            "intent": IntentType.structural_pathway_search.value,
+            "display_name": "Structural Pathway Search",
+            "description": "Compute directed shortest synaptic paths and alternative routes between source and target neurons.",
+            "status": "supported",
+        },
+        {
+            "intent": IntentType.downstream_reachability.value,
+            "display_name": "Downstream Reachability",
+            "description": "Calculate multi-hop downstream reachability cascade from an identified root neuron.",
+            "status": "supported",
+        },
+        {
+            "intent": IntentType.structural_intervention_analysis.value,
+            "display_name": "Structural Intervention Analysis",
+            "description": "Simulate in-silico lesions (neuron/connection knockouts) and analyze network resilience.",
+            "status": "supported",
+        },
+        {
+            "intent": IntentType.general_question.value,
+            "display_name": "General Neurobiology Question",
+            "description": "General biological or methodological question that does not require direct graph traversal.",
+            "status": "supported",
+        },
+        {
+            "intent": IntentType.unsupported_biological_question.value,
+            "display_name": "Unsupported Biological Query",
+            "description": "Biological function lacks sufficient MaleCNS v1.0 annotation or literature support in the knowledge layer.",
+            "status": "unsupported",
+        },
+        {
+            "intent": IntentType.ambiguous_question.value,
+            "display_name": "Ambiguous Question",
+            "description": "Input question is ambiguous or underspecified and requires user clarification.",
+            "status": "needs_clarification",
+        },
+    ]
+
+
+@app.get(
+    "/api/neuroquery/config",
+    response_model=NeuroQueryConfigResponse,
+    summary="Get current NeuroQuery LLM provider configuration and status",
+    tags=["NeuroQuery Natural-Language Planner"],
+)
+async def get_neuroquery_config(
+    planner_svc: PlannerDep,
+) -> NeuroQueryConfigResponse:
+    """Returns active provider, model name, and configuration health without exposing secrets."""
+    settings = planner_svc.settings
+    is_conf = bool(settings.neuroquery_llm_api_key) if settings.neuroquery_llm_provider != "mock" else True
+    return NeuroQueryConfigResponse(
+        provider=settings.neuroquery_llm_provider,
+        model=settings.neuroquery_llm_model,
+        is_configured=is_conf,
+        timeout_seconds=settings.neuroquery_llm_timeout_seconds,
+        max_retries=settings.neuroquery_llm_max_retries,
+        supported_intents=[i.value for i in IntentType],
+        notice=(
+            "Mock LLM provider is active; running deterministic biological NLP offline."
+            if settings.neuroquery_llm_provider == "mock"
+            else f"Live LLM provider '{settings.neuroquery_llm_provider}' configured with model '{settings.neuroquery_llm_model}'."
+        ),
+    )
+
 
 

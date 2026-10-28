@@ -367,8 +367,78 @@ def main() -> None:
     print(f"     Retrieved {len(cand_res)} candidates (DNp01/TTMn), {len(inv_res)} investigations, audit: {audit_res['compatible_mapping_count']} compatible, {audit_res['incompatible_mapping_count']} incompatible (honest negative)")
     print()
 
+    # ── 21. V7 NeuroQuery Provider Configuration & Status ──────────
+    print("21. V7 NeuroQuery Provider Configuration")
+    nq_cfg = get("/api/neuroquery/config")
+    check("provider is configured", nq_cfg["is_configured"] is True)
+    check("supported_intents >= 8", len(nq_cfg["supported_intents"]) >= 8, len(nq_cfg["supported_intents"]))
+    check("provider name present", nq_cfg["provider"] in ["mock", "openai"])
+    print(f"     Provider: {nq_cfg['provider']} ({nq_cfg['model']}), timeout={nq_cfg['timeout_seconds']}s")
+    print()
+
+    # ── 22. V7 NeuroQuery Intent Taxonomy ──────────────────────────
+    print("22. V7 NeuroQuery Intent Taxonomy")
+    intents = get("/api/neuroquery/intents")
+    check("intents returned >= 8", len(intents) >= 8)
+    intent_names = [i["intent"] for i in intents]
+    check("circuit_discovery in taxonomy", "circuit_discovery" in intent_names)
+    check("ambiguous_question in taxonomy", "ambiguous_question" in intent_names)
+    check("unsupported_biological_question in taxonomy", "unsupported_biological_question" in intent_names)
+    print(f"     Controlled Intent Taxonomy: {len(intents)} intents registered and validated")
+    print()
+
+    # ── 23. V7 Natural-Language Plan Generation ────────────────────
+    print("23. V7 Natural-Language Plan Generation (Directional Motion)")
+    motion_q = {"question": "How does the fruit fly visual system detect directional motion?"}
+    plan = post("/api/neuroquery/plan", motion_q)
+    check("plan_id present", bool(plan["plan_id"]))
+    check("intent == circuit_discovery", plan["intent"] == "circuit_discovery", plan["intent"])
+    check("concept_ids has motion detection", "visual_motion_detection_t4_t5" in plan["concept_ids"])
+    check("investigation_id == inv-circuit-discovery", plan["investigation_id"] == "inv-circuit-discovery")
+    check("support_status == ready_for_review", plan["support_status"] == "ready_for_review")
+    check("planned_operations >= 3", len(plan["planned_operations"]) >= 3, len(plan["planned_operations"]))
+    check("op[0] is concept-mapping", plan["planned_operations"][0]["operation_id"] == "op-concept-mapping")
+    check("op[1] marked is_v8_execution", plan["planned_operations"][1]["is_v8_execution"] is True)
+    check("evidence_sources attached >= 1", len(plan["evidence_sources"]) >= 1)
+    print(f"     Generated plan {plan['plan_id']}: intent={plan['intent']}, ops={len(plan['planned_operations'])}, "
+          f"concepts={plan['concept_ids']}, evidence={len(plan['evidence_sources'])}")
+    print()
+
+    # ── 24. V7 Ambiguous Question & Clarification Flow ─────────────
+    print("24. V7 Ambiguous Question & Clarification Flow")
+    ambig_q = {"question": "Show me the visual circuit."}
+    ambig_plan = post("/api/neuroquery/plan", ambig_q)
+    check("ambig_plan intent == ambiguous_question", ambig_plan["intent"] == "ambiguous_question", ambig_plan["intent"])
+    check("clarification_needed is True", ambig_plan["clarification_needed"] is True)
+    check("support_status == needs_clarification", ambig_plan["support_status"] == "needs_clarification")
+    check("clarification_questions >= 1", len(ambig_plan["clarification_questions"]) >= 1)
+
+    # Refine with clarification context
+    refine_q = {
+        "question": "Show me the visual circuit. (Clarification: Color processing in Tm5/Dm8)",
+        "clarification_context": {
+            "previous_question": "Show me the visual circuit.",
+            "clarification_response": "Color processing in Tm5/Dm8",
+        },
+    }
+    refined_plan = post("/api/neuroquery/plan", refine_q)
+    check("refined_plan intent == circuit_discovery", refined_plan["intent"] == "circuit_discovery")
+    check("refined_plan concept has color vision", "color_vision_spectral_processing" in refined_plan["concept_ids"])
+    check("clarification resolved (needed == False)", refined_plan["clarification_needed"] is False)
+    print(f"     Clarification successfully resolved ambiguous query -> {refined_plan['concept_ids']}")
+    print()
+
+    # ── 25. V7 Structured Plan Validation ──────────────────────────
+    print("25. V7 Structured Plan Validation")
+    val_res = post("/api/neuroquery/validate", {"plan": plan})
+    check("validation valid == True", val_res["valid"] is True)
+    check("validation errors == 0", len(val_res["errors"]) == 0)
+    check("validation support_status == ready_for_review", val_res["support_status"] == "ready_for_review")
+    print(f"     Audit report: {val_res['summary']}")
+    print()
+
     print("=" * 60)
-    print("  ALL V1–V6 E2E VERIFICATION CHECKS PASSED (20/20)")
+    print("  ALL V1–V7 E2E VERIFICATION CHECKS PASSED (25/25)")
     print("=" * 60)
     print()
     print("Live data verification status:")
@@ -378,10 +448,12 @@ def main() -> None:
     print("  ✓ V4 Neural Debugger: Route Structure & Continuity Validation")
     print("  ✓ V5 Perturbation Lab: Intervention Validation, Comparative Analysis (ΔR, ΔH), Reproducible Controlled Experiments")
     print("  ✓ V6 NeuroQuery Foundation: Biological Concept Catalog, Scientific Evidence Registry, Concept Mapping Engine, Supported Investigations & Audit")
+    print("  ✓ V7 NeuroQuery Natural-Language Planner: Intent Classification, V6 Concept Resolution, Plan Validation & Clarification Flow")
     print("  ✓ Real Janelia MaleCNS v1.0 Feather data (211,577 neurons, 25.5M connections)")
     print("  ✓ Source Immutability strictly verified: 0 persistent mutations")
 
 
 if __name__ == "__main__":
     main()
+
 

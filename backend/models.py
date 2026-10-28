@@ -654,4 +654,102 @@ class KnowledgeValidationReport(BaseModel):
     summary: str
 
 
+# ── V7: NeuroQuery Natural-Language Understanding & Planning Models ─────────
+
+class IntentType(str, Enum):
+    """Controlled taxonomy of user investigation intents."""
+    circuit_discovery = "circuit_discovery"
+    inspect_neuron = "inspect_neuron"
+    structural_pathway_search = "structural_pathway_search"
+    downstream_reachability = "downstream_reachability"
+    structural_intervention_analysis = "structural_intervention_analysis"
+    general_question = "general_question"
+    unsupported_biological_question = "unsupported_biological_question"
+    ambiguous_question = "ambiguous_question"
+
+
+class PlanSupportStatus(str, Enum):
+    """Validation and execution support status for an investigation plan."""
+    ready_for_review = "ready_for_review"
+    needs_clarification = "needs_clarification"
+    partially_supported = "partially_supported"
+    unsupported = "unsupported"
+    validation_failed = "validation_failed"
+    provider_unavailable = "provider_unavailable"
+
+
+class PlannedOperation(BaseModel):
+    """An individual tool operation proposed as part of an investigation plan."""
+    operation_id: str
+    tool_name: str
+    description: str
+    parameters: dict[str, object] = Field(default_factory=dict)
+    prerequisites: list[str] = Field(default_factory=list)
+    is_v8_execution: bool = True
+
+
+class InvestigationPlan(BaseModel):
+    """Structured, evidence-grounded plan produced from a natural-language question."""
+    plan_id: str
+    plan_schema_version: str = "1.0.0"
+    original_question: str
+    normalized_question: str
+    intent: IntentType
+    confidence_score: Optional[float] = None
+    confidence_explanation: Optional[str] = None
+    concept_ids: list[str] = Field(default_factory=list)
+    resolved_concepts: list[BiologicalConcept] = Field(default_factory=list)
+    investigation_id: Optional[str] = None
+    investigation: Optional[SupportedInvestigation] = None
+    requested_entities: dict[str, object] = Field(default_factory=dict)
+    parameters: dict[str, object] = Field(default_factory=dict)
+    planned_operations: list[PlannedOperation] = Field(default_factory=list)
+    required_dataset_fields: list[str] = Field(default_factory=list)
+    required_evidence_sources: list[str] = Field(default_factory=list)
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+    support_status: PlanSupportStatus
+    clarification_needed: bool = False
+    clarification_questions: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    validation_findings: list[str] = Field(default_factory=list)
+    explanation: str
+    knowledge_catalog_version: str = "1.0.0"
+    dataset_version: str = "male-cns:v1.0"
+    created_at: str
+
+
+class PlanGenerationRequest(BaseModel):
+    """Request to parse a question and generate an investigation plan."""
+    question: str = Field(..., min_length=1, max_length=1000)
+    clarification_context: Optional[dict[str, object]] = None
+    parameters: Optional[dict[str, object]] = None
+
+
+class PlanValidationRequest(BaseModel):
+    """Request to validate an existing candidate investigation plan."""
+    plan: InvestigationPlan
+
+
+class PlanValidationResponse(BaseModel):
+    """Validation report for a structured investigation plan."""
+    valid: bool
+    plan_id: str
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    support_status: PlanSupportStatus
+    summary: str
+
+
+class NeuroQueryConfigResponse(BaseModel):
+    """Current configuration and status of the NeuroQuery LLM provider."""
+    provider: str
+    model: str
+    is_configured: bool
+    timeout_seconds: int
+    max_retries: int
+    supported_intents: list[str]
+    notice: str
+
+
+
 

@@ -17,6 +17,9 @@ Instead of inspecting functions and variables, researchers inspect neurons, syna
 - **V2 — Enhanced Neuron Inspector & Connectivity Intelligence**: Production-grade neuron inspector with collapsible profile sections, bi-directional connectivity intelligence summary, sortable/filterable/paginated connection tables with relative weight bars, honest scientific provenance disclosure, and race-condition-free async lifecycle.
 - **V3 — Neural Pathway Tracer & Downstream Cascade Analysis**: Dedicated workspace for tracing multi-hop directed structural pathways between arbitrary neurons, discovering and comparing alternative routes with shortest-hop and mathematically sound weight-prioritized rankings, and computing downstream reachability cascades grouped by hop distance with layer-by-layer graph visualization and full Inspector synchronization.
 - **V4 — Neural Debugger: Interactive Structural Path Tracing, Breakpoints & Execution History**: Developer-tools-style interactive debugging environment that turns any selected V3 directed pathway into an inspectable, deterministic execution trace with step navigation, pause/continue/stop/restart controls, configurable breakpoints (Neuron ID, Hop Index, Cell Type/Superclass Annotation, Recorded Synapse Weight Threshold), a transparent monotonically ordered execution event log, and JSON export.
+- **V5 — Perturbation Lab**: Simulated neural damage, connectivity analysis & network resilience.
+- **V6 — NeuroQuery Foundation & Biological Knowledge Layer**: Versioned concept catalog, authentic scientific citations with direct DOIs, mapping engine, and Knowledge Explorer.
+- **V7 — NeuroQuery Natural-Language Understanding & Structured Investigation Planning**: Dedicated natural-language question interface ("Ask NeuroQuery"), backend LLM provider abstraction (offline deterministic MockLLMProvider and OpenAI-compatible client), intent classification, V6 concept resolution, strict validation, interactive clarification flow, and structured JSON plan export.
 
 ---
 
@@ -286,6 +289,59 @@ npm run build --prefix frontend
 - V4 ✅ Neural Debugger (interactive structural path tracing, breakpoints & execution history)
 - V5 ✅ Perturbation Lab (simulated neural damage, connectivity analysis & network resilience)
 - V6 ✅ NeuroQuery Foundation & Biological Knowledge Layer (versioned concepts, verified evidence with DOIs, mapping engine, supported investigations & Knowledge Explorer)
+- V7 ✅ NeuroQuery Natural-Language Understanding & Structured Investigation Planning (Ask NeuroQuery workspace, LLM provider abstraction, intent classification, V6 concept resolution, plan validation & clarification flow)
+
+---
+
+## Version 7 Features — NeuroQuery Natural-Language Understanding & Planning
+
+Version 7 introduces **Ask NeuroQuery**, enabling researchers to formulate biological and structural questions in natural language and translate them into validated, structured, evidence-aware investigation plans grounded in the Janelia MaleCNS v1.0 connectome and V6 knowledge registry.
+
+### Strict Scope Boundary for V7
+> **V7 Plan Boundary**: V7 implements natural-language parsing, intent classification, biological concept resolution against V6, plan parameter binding, validation, ambiguity clarification, and structured plan review with JSON export.
+> Full automatic neural circuit discovery, subgraph construction, and graph traversal execution are strictly reserved for **V8**. V7 generates and validates plans without claiming that circuits have already been discovered.
+
+### 1. Dedicated "Ask NeuroQuery" Workspace (`frontend/src/components/AskNeuroQuery.tsx`)
+- Integrated into the main workspace switcher with a Sparkles icon.
+- Natural-language question input with sample prompt buttons covering motion detection, giant fiber escape, visual looming, pathway searches, color vision, in-silico lesions, ambiguous queries, and unsupported biological topics.
+- Live active provider status indicator (`Provider: mock (gpt-4o)` or live configured provider).
+- Question interpretation panel displaying detected intent, estimated model confidence score with explanation, and resolved V6 concept badges.
+- Structured Operations Pipeline table detailing each operation, tool name, description, parameters, prerequisites, and scope target (V7 Prepared vs V8 Execution).
+- Evidence & Provenance cards with authentic publication titles, authors, journals, and direct clickable DOI links.
+- Limitations disclosure and real-time backend validation report.
+- Interactive controls: **Validate Plan** (`POST /api/neuroquery/validate`) and **Export JSON** (downloading machine-readable plan records).
+
+### 2. Backend LLM Provider Abstraction (`backend/llm_provider.py`)
+- Centralized configuration via environment variables:
+  - `NEUROQUERY_LLM_PROVIDER`: `mock` (default for offline deterministic CI/local development) or `openai` (for live OpenAI-compatible endpoints).
+  - `NEUROQUERY_LLM_BASE_URL`: API base URL (defaults to `https://api.openai.com/v1`).
+  - `NEUROQUERY_LLM_MODEL`: Model identifier (defaults to `gpt-4o`).
+  - `NEUROQUERY_LLM_API_KEY`: Model provider secret (redacted in representations and logs; never sent to frontend).
+  - `NEUROQUERY_LLM_TIMEOUT_SECONDS`: Request timeout (default: 15s).
+  - `NEUROQUERY_LLM_MAX_RETRIES`: Retry limit on transient network errors (default: 2).
+- **Deterministic MockLLMProvider**: Runs fully offline with zero external network dependencies, classifying intents, resolving concepts, extracting entities, and handling ambiguity reliably.
+- **Prompt Injection Defense**: Untrusted user inputs are scanned for prompt-injection patterns (`ignore instructions`, `drop table`, `eval()`); injection attempts are neutralized and classified as untrusted general queries.
+
+### 3. Intent Classification & Concept Resolution (`backend/query_planner_service.py`)
+- Controlled Intent Taxonomy (`IntentType`):
+  - `circuit_discovery`: Subgraph exploration for biological processes (V7 plans; V8 executes).
+  - `inspect_neuron`: Single-neuron anatomy and synaptic partner exploration.
+  - `structural_pathway_search`: Directed routes between designated source and target neurons.
+  - `downstream_reachability`: Divergence cascades from root neurons.
+  - `structural_intervention_analysis`: In-silico lesions and network resilience experiments.
+  - `general_question`: Non-graph neurobiological context.
+  - `unsupported_biological_question`: Questions outside current MaleCNS annotations or evidence catalog.
+  - `ambiguous_question`: Questions requiring focused clarification.
+- Grounds proposed concept IDs against `knowledge_service._concepts`. Uncataloged concepts are omitted and noted in validation findings.
+- Resolves authentic `EvidenceSource` citations with legitimate DOIs directly from V6.
+
+### 4. Interactive Disambiguation & Clarification Flow
+- When ambiguous or underspecified questions are submitted (e.g., *"Show me the visual circuit"*), the planner assigns `ambiguous_question` intent, sets `clarification_needed: true`, and generates focused clarification questions with contextual quick-select buttons.
+- Preserves conversation context across rounds: user clarification answers are merged with the original query, narrowing the plan (e.g. to `visual_motion_detection_t4_t5` or `color_vision_spectral_processing`) and transitioning status to `ready_for_review` or `partially_supported`.
+
+### 5. Honest Negative Handling & Parameter Bounding
+- Questions addressing unsupported biological features (such as antennal courtship song acoustic subcircuits) are honestly marked as `unsupported` without fabricating candidate neurons or connections.
+- Parameter bounds are enforced: `max_hops` is clamped to $[1, 5]$, `max_nodes` is clamped to $[5, 100]$, and body IDs are verified against loaded MaleCNS v1.0 annotations.
 
 ---
 

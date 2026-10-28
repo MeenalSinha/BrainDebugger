@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     neuprint_dataset: str = "male-cns:v1.0"
     neuprint_token: Optional[str] = None
 
+    # ── NeuroQuery LLM Provider (V7) ──────────────────────────────────────────
+    neuroquery_llm_provider: str = "mock"
+    neuroquery_llm_base_url: Optional[str] = None
+    neuroquery_llm_model: str = "gpt-4o"
+    neuroquery_llm_api_key: Optional[str] = None
+    neuroquery_llm_timeout_seconds: int = 15
+    neuroquery_llm_max_retries: int = 2
+
     # ── Limits ───────────────────────────────────────────────────────────────
     max_search_results: int = 100
     max_connections: int = 500
@@ -143,6 +151,10 @@ class Settings(BaseSettings):
             "http_timeout": self.http_timeout,
             "cache_ttl_seconds": self.cache_ttl_seconds,
             "log_level": self.log_level,
+            "neuroquery_llm_provider": self.neuroquery_llm_provider,
+            "neuroquery_llm_model": self.neuroquery_llm_model,
+            "neuroquery_llm_api_key": "(set)" if self.neuroquery_llm_api_key else "(not set)",
+            "neuroquery_llm_timeout_seconds": self.neuroquery_llm_timeout_seconds,
         }
 
 

@@ -485,6 +485,7 @@ export interface EvidenceSource {
   title: string;
   authors: string[] | string;
   year?: number | null;
+  journal?: string | null;
   doi?: string | null;
   url?: string | null;
   source_type: 'peer_reviewed_paper' | 'official_documentation' | 'dataset_descriptor' | 'curated_annotation';
@@ -630,5 +631,100 @@ export interface SupportedInvestigationsResponse {
   total: number;
   investigations: SupportedInvestigation[];
 }
+
+// ── V7: NeuroQuery Natural-Language Planning Types ─────────────────────────
+
+export type IntentType =
+  | 'circuit_discovery'
+  | 'inspect_neuron'
+  | 'structural_pathway_search'
+  | 'downstream_reachability'
+  | 'structural_intervention_analysis'
+  | 'general_question'
+  | 'unsupported_biological_question'
+  | 'ambiguous_question';
+
+export type PlanSupportStatus =
+  | 'ready_for_review'
+  | 'needs_clarification'
+  | 'partially_supported'
+  | 'unsupported'
+  | 'validation_failed'
+  | 'provider_unavailable';
+
+export interface PlannedOperation {
+  operation_id: string;
+  tool_name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  prerequisites: string[];
+  is_v8_execution: boolean;
+}
+
+export interface InvestigationPlan {
+  plan_id: string;
+  plan_schema_version: string;
+  original_question: string;
+  normalized_question: string;
+  intent: IntentType;
+  confidence_score?: number | null;
+  confidence_explanation?: string | null;
+  concept_ids: string[];
+  resolved_concepts: BiologicalConcept[];
+  investigation_id?: string | null;
+  investigation?: SupportedInvestigation | null;
+  requested_entities: Record<string, unknown>;
+  parameters: Record<string, unknown>;
+  planned_operations: PlannedOperation[];
+  required_dataset_fields: string[];
+  required_evidence_sources: string[];
+  evidence_sources: EvidenceSource[];
+  support_status: PlanSupportStatus;
+  clarification_needed: boolean;
+  clarification_questions: string[];
+  limitations: string[];
+  validation_findings: string[];
+  explanation: string;
+  knowledge_catalog_version: string;
+  dataset_version: string;
+  created_at: string;
+}
+
+export interface PlanGenerationRequest {
+  question: string;
+  clarification_context?: Record<string, unknown> | null;
+  parameters?: Record<string, unknown> | null;
+}
+
+export interface PlanValidationRequest {
+  plan: InvestigationPlan;
+}
+
+export interface PlanValidationResponse {
+  valid: boolean;
+  plan_id: string;
+  errors: string[];
+  warnings: string[];
+  support_status: PlanSupportStatus;
+  summary: string;
+}
+
+export interface NeuroQueryConfigResponse {
+  provider: string;
+  model: string;
+  is_configured: boolean;
+  timeout_seconds: number;
+  max_retries: number;
+  supported_intents: string[];
+  notice: string;
+}
+
+export interface IntentTaxonomyItem {
+  intent: string;
+  display_name: string;
+  description: string;
+  status: string;
+}
+
 
 

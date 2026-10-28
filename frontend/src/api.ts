@@ -28,6 +28,12 @@ import type {
   PerturbationComparisonResponse,
   PerturbationValidationResponse,
   SupportedInvestigation,
+  InvestigationPlan,
+  PlanGenerationRequest,
+  PlanValidationRequest,
+  PlanValidationResponse,
+  NeuroQueryConfigResponse,
+  IntentTaxonomyItem,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -245,5 +251,22 @@ export const api = {
   auditKnowledgeCatalog(signal?: AbortSignal): Promise<KnowledgeValidationReport> {
     return get<KnowledgeValidationReport>('/api/knowledge/audit', signal);
   },
+
+  generateInvestigationPlan(req: PlanGenerationRequest, signal?: AbortSignal): Promise<InvestigationPlan> {
+    return post<InvestigationPlan>('/api/neuroquery/plan', req, signal);
+  },
+
+  validateInvestigationPlan(req: PlanValidationRequest, signal?: AbortSignal): Promise<PlanValidationResponse> {
+    return post<PlanValidationResponse>('/api/neuroquery/validate', req, signal);
+  },
+
+  getNeuroQueryConfig(signal?: AbortSignal): Promise<NeuroQueryConfigResponse> {
+    return get<NeuroQueryConfigResponse>('/api/neuroquery/config', signal);
+  },
+
+  listNeuroQueryIntents(signal?: AbortSignal): Promise<IntentTaxonomyItem[]> {
+    return get<IntentTaxonomyItem[]>('/api/neuroquery/intents', signal);
+  },
 };
+
 
