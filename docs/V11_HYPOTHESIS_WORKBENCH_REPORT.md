@@ -237,3 +237,4 @@ In compliance with computational neuroscience best practices, all V11 components
 ## Conclusion
 
 BrainDebugger Version 11 transforms the platform from an exploratory tool into a complete, evidence-grounded scientific hypothesis and notebook environment. By linking every claim to concrete execution records, enforcing alternative bias explanations, planning testable follow-up studies, and maintaining durable project histories, BrainDebugger enables reproducible connectome research with uncompromising scientific integrity.
+

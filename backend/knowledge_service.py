@@ -119,6 +119,10 @@ class KnowledgeService:
         except Exception as exc:
             logger.error("Failed to load knowledge catalog: %s", exc)
 
+    @property
+    def catalog_version(self) -> str:
+        return self._manifest.version if self._manifest else "1.0.0"
+
     def get_status(self) -> KnowledgeStatusResponse:
         """Returns the overall health and status of the knowledge layer."""
         report = self.validate_catalog()

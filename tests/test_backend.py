@@ -2797,6 +2797,364 @@ class TestV11HypothesisWorkbench:
         assert "Boundary Conditions" in report_md
 
 
+# ── V12 Research Program Synthesis & Study Prioritization Tests ───────────────
+
+class TestV12ResearchProgramSynthesis:
+    """Unit tests for cross-hypothesis evidence synthesis, gap analysis, and study prioritization."""
+
+    def _make_services(self):
+        import pandas as pd
+        from backend.config import Settings
+        from backend.data_provider import LocalFeatherProvider
+        from backend.knowledge_service import KnowledgeService
+        from backend.query_planner_service import QueryPlannerService
+        from backend.circuit_discovery_service import CircuitDiscoveryService
+        from backend.robustness_analysis_service import RobustnessAnalysisService
+        from backend.hypothesis_service import HypothesisService
+        from backend.research_synthesis_service import ResearchSynthesisService
+        from backend.service import ConnectomeService
+        from backend.perturbation_service import PerturbationService
+        from pathlib import Path
+
+        p = LocalFeatherProvider(Path("data"))
+        p._annotations = pd.DataFrame({
+            "bodyId": [10001, 800146, 20001, 20002],
+            "type": ["DNp01", "TTMn", "T4a", "T5a"],
+            "instance": ["DNp01_L", "TTMn_R", "T4a_L", "T5a_L"],
+            "superclass": ["descending_neuron", "vnc_motor", "ol_intrinsic", "ol_intrinsic"],
+            "status": ["Traced"] * 4,
+        }).set_index("bodyId", drop=False)
+        p._weights = pd.DataFrame({
+            "body_pre": [10001, 20001],
+            "body_post": [800146, 20002],
+            "weight": [70, 25],
+        })
+        p._loaded = True
+        p._index_graph()
+
+        settings = Settings(data_dir="data")
+        cs = ConnectomeService(p, settings)
+        ps = PerturbationService(p)
+        ks = KnowledgeService(p, knowledge_dir="data/knowledge")
+        qps = QueryPlannerService(ks, p, settings)
+        cds = CircuitDiscoveryService(ks, p, cs, ps, qps, settings)
+        ras = RobustnessAnalysisService(cds, ks, p, qps, settings)
+        hs = HypothesisService(cds, ras, cs, ps, ks, p)
+        rss = ResearchSynthesisService(hs, ks, p)
+        return p, ks, hs, rss
+
+    def test_research_synthesis_service_initialization(self):
+        _, _, hs, rss = self._make_services()
+        assert rss is not None
+        assert rss.hypothesis_svc == hs
+
+    def test_cross_hypothesis_evidence_synthesis_shared_vs_independent(self):
+        from backend.models import HypothesisCreateRequest, EvidenceCreateRequest
+        _, _, hs, rss = self._make_services()
+
+        # Create two hypotheses in the same project
+        h1 = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Hypothesis 1: Giant Fiber Escape Primary Drive",
+            statement="DNp01 directs motor output via strong direct synapse to TTMn.",
+            project_id="proj-default",
+            linked_concept_ids=["giant_fiber_escape_circuit"],
+            target_neurons=[10001, 800146],
+            target_edges=[[10001, 800146]],
+        ))
+        h2 = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Hypothesis 2: Escape Threshold Resilience",
+            statement="DNp01 synapse persists across extreme threshold cutoffs.",
+            project_id="proj-default",
+            linked_concept_ids=["giant_fiber_escape_circuit"],
+            target_neurons=[10001, 800146],
+            target_edges=[[10001, 800146]],
+        ))
+
+        # Attach identical source execution ID to both hypotheses
+        shared_exec_id = "exec-shared-probe-101"
+        hs.add_evidence(h1.hypothesis_id, EvidenceCreateRequest(
+            role="supporting",
+            evidence_type="edge_survival",
+            summary="Direct synapse wt=70 survives strict filtering.",
+            source_execution_id=shared_exec_id,
+            scientific_doi="10.1101/2023.12.04.569999",
+        ))
+        hs.add_evidence(h2.hypothesis_id, EvidenceCreateRequest(
+            role="supporting",
+            evidence_type="edge_survival",
+            summary="Identical direct synapse wt=70 confirmed in sweep.",
+            source_execution_id=shared_exec_id,
+            scientific_doi="10.1101/2023.12.04.569999",
+        ))
+
+        # Attach unique independent evidence to h1 only
+        hs.add_evidence(h1.hypothesis_id, EvidenceCreateRequest(
+            role="supporting",
+            evidence_type="pathway_continuity",
+            summary="Independent single-hop pathway traced.",
+            source_execution_id="exec-independent-h1-only",
+        ))
+
+        # Generate Synthesis
+        synth = rss.generate_synthesis("proj-default")
+        assert synth.project_id == "proj-default"
+        assert synth.total_hypotheses >= 2
+
+        # Verify shared evidence detection
+        shared_keys = [s["source_identifier"] for s in synth.shared_evidence_sources]
+        assert shared_exec_id in shared_keys
+
+        shared_item = next(s for s in synth.shared_evidence_sources if s["source_identifier"] == shared_exec_id)
+        assert shared_item["is_shared"] is True
+        assert shared_item["is_independent"] is False
+        assert shared_item["citation_count"] == 2
+        assert set(shared_item["citing_hypothesis_ids"]) == {h1.hypothesis_id, h2.hypothesis_id}
+        assert "NOT independent corroboration" in shared_item["scientific_warning"]
+
+        # Verify independent evidence
+        indep_keys = [s["source_identifier"] for s in synth.independent_evidence_sources]
+        assert "exec-independent-h1-only" in indep_keys
+
+    def test_shared_and_distinct_concepts_and_directed_edges(self):
+        from backend.models import HypothesisCreateRequest
+        _, _, hs, rss = self._make_services()
+
+        h1 = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Circuit A",
+            statement="Forward connection A to B.",
+            project_id="proj-default",
+            linked_concept_ids=["giant_fiber_escape_circuit"],
+            target_neurons=[10001, 800146],
+            target_edges=[[10001, 800146]],
+        ))
+        h2 = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Circuit B",
+            statement="Backward feedback connection B to A.",
+            project_id="proj-default",
+            linked_concept_ids=["visual_motion_detection_t4_t5"],
+            target_neurons=[800146, 10001, 20001],
+            target_edges=[[800146, 10001]],  # Distinct reverse direction!
+        ))
+
+        synth = rss.generate_synthesis("proj-default")
+
+        # Candidate neurons 10001 and 800146 are shared, 20001 is distinct
+        assert 10001 in synth.shared_candidate_neuron_ids
+        assert 800146 in synth.shared_candidate_neuron_ids
+        assert 20001 in synth.distinct_candidate_neuron_ids
+
+        # Crucial check: directed edge [10001, 800146] != [800146, 10001]
+        assert [10001, 800146] in synth.distinct_directed_edges
+        assert [800146, 10001] in synth.distinct_directed_edges
+        assert len(synth.shared_directed_edges) == 0  # No common directed edge
+
+    def test_contradiction_detection_and_review(self):
+        from backend.models import (
+            HypothesisCreateRequest,
+            EvidenceCreateRequest,
+            ContradictionReviewRequest,
+            ContradictionReviewStatus,
+        )
+        _, _, hs, rss = self._make_services()
+
+        # Create stability hypothesis with contradicting evidence of high rank spread
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Unstable Candidate Masked as Stable",
+            statement="Candidate neuron is alleged to be highly stable across sweeps.",
+            category="candidate_stability",
+            project_id="proj-default",
+            target_neurons=[10001],
+        ))
+        hs.add_evidence(hyp.hypothesis_id, EvidenceCreateRequest(
+            role="supporting",
+            evidence_type="robustness_inclusion",
+            summary="Inclusion fraction 80% with extreme rank oscillation.",
+            metric_name="rank_spread",
+            metric_value=5.5,  # >= 4.0 triggers contradiction
+        ))
+
+        synth = rss.generate_synthesis("proj-default")
+        assert len(synth.active_contradictions) >= 1
+
+        contra = synth.active_contradictions[0]
+        assert contra.review_status == ContradictionReviewStatus.open
+        assert "rank spread is 5.5" in contra.description
+
+        # Review and resolve the contradiction
+        review_req = ContradictionReviewRequest(
+            review_status=ContradictionReviewStatus.explained_by_configuration,
+            resolution_rationale="Rank spread is caused by varying connectivity weight penalties in ranking profiles.",
+            resolved_by="lead_investigator",
+        )
+        reviewed = rss.review_contradiction("proj-default", contra.contradiction_id, review_req)
+        assert reviewed.review_status == ContradictionReviewStatus.explained_by_configuration
+        assert reviewed.resolved_by == "lead_investigator"
+        assert reviewed.resolved_at is not None
+
+    def test_evidence_gap_analysis_and_lifecycle(self):
+        from backend.models import HypothesisCreateRequest, GapUpdateRequest, GapStatus
+        _, _, hs, rss = self._make_services()
+
+        # Hypothesis with no evidence records -> triggers missing_source_evidence gap
+        h_no_ev = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Hollow Hypothesis",
+            statement="Statement without empirical evidence backing.",
+            project_id="proj-default",
+        ))
+
+        synth = rss.generate_synthesis("proj-default")
+        gaps = synth.open_gaps
+        assert any(g.category.value == "missing_source_evidence" for g in gaps)
+
+        target_gap = next(g for g in gaps if g.category.value == "missing_source_evidence")
+        assert target_gap.is_actionable is True
+
+        # Update gap status
+        up_req = GapUpdateRequest(status=GapStatus.in_progress, resolution_notes="Investigating baseline extraction.")
+        updated_gap = rss.update_gap("proj-default", target_gap.gap_id, up_req)
+        assert updated_gap.status == GapStatus.in_progress
+        assert updated_gap.resolution_notes == "Investigating baseline extraction."
+
+    def test_research_agenda_prioritization_formula(self):
+        from backend.models import HypothesisCreateRequest
+        _, _, hs, rss = self._make_services()
+
+        # Create hypothesis lacking robustness evaluation
+        hs.create_hypothesis(HypothesisCreateRequest(
+            title="Visual T4a Directional Stability",
+            statement="T4a inclusion is robust to thresholding.",
+            category="candidate_stability",
+            project_id="proj-default",
+            linked_execution_ids=["exec-visual-baseline-001"],
+            target_neurons=[20001],
+        ))
+
+        agenda = rss.generate_agenda("proj-default")
+        assert agenda.project_id == "proj-default"
+        assert len(agenda.recommended_actions) >= 1
+
+        top_rec = agenda.recommended_actions[0]
+        assert top_rec.action_id.startswith("rec-")
+        assert 0.05 <= top_rec.priority_score <= 1.0
+        assert "gap_importance" in top_rec.priority_breakdown
+        assert "feasibility" in top_rec.priority_breakdown
+        assert top_rec.is_ready is True
+        assert top_rec.target_tool in ("robustness_lab", "pathway_tracer", "circuit_discovery", "execute_study")
+
+    def test_study_dependency_dag_validation_and_cycle_detection(self):
+        import pytest
+        from backend.models import HypothesisCreateRequest, StudyCreateRequest, DependencyCreateRequest
+        _, _, hs, rss = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Study Sequence Test",
+            statement="Evaluating sequential study dependency validation.",
+            project_id="proj-default",
+        ))
+        s1 = hs.create_study(hyp.hypothesis_id, StudyCreateRequest(
+            title="Study 1: Pathway Search",
+            analysis_type="pathway_search",
+            objective="Confirm path.",
+            expected_null_outcome="No path.",
+        ))
+        s2 = hs.create_study(hyp.hypothesis_id, StudyCreateRequest(
+            title="Study 2: Perturbation Knockout",
+            analysis_type="perturbation",
+            objective="Confirm knockout impact.",
+            expected_null_outcome="No impact.",
+        ))
+
+        # Register valid dependency: s2 depends on s1
+        dep = rss.create_dependency("proj-default", DependencyCreateRequest(
+            study_id=s2.study_id,
+            prerequisite_study_id=s1.study_id,
+            description="Must verify pathway continuity before running perturbation.",
+        ))
+        assert dep.study_id == s2.study_id
+        assert dep.prerequisite_study_id == s1.study_id
+
+        # Self-dependency must raise ValueError
+        with pytest.raises(ValueError, match="Self-dependency"):
+            rss.create_dependency("proj-default", DependencyCreateRequest(
+                study_id=s1.study_id,
+                prerequisite_study_id=s1.study_id,
+            ))
+
+        # Cycle creation: s1 depends on s2 while s2 depends on s1 -> must raise ValueError
+        with pytest.raises(ValueError, match="Cycle detected"):
+            rss.create_dependency("proj-default", DependencyCreateRequest(
+                study_id=s1.study_id,
+                prerequisite_study_id=s2.study_id,
+            ))
+
+        # Validate topological order
+        order, blocked, reasons = rss.validate_dependency_graph("proj-default", [s1.study_id, s2.study_id])
+        assert order == [s1.study_id, s2.study_id]
+        # s2 is blocked because s1 is not yet completed
+        assert s2.study_id in blocked
+        assert s1.study_id not in blocked
+
+    @pytest.mark.asyncio
+    async def test_campaign_preview_and_controlled_execution(self):
+        from backend.models import HypothesisCreateRequest, StudyCreateRequest, CampaignCreateRequest
+        _, _, hs, rss = self._make_services()
+
+        hyp = hs.create_hypothesis(HypothesisCreateRequest(
+            title="Campaign Test Hypothesis",
+            statement="Verifying batch execution with dependency constraints.",
+            project_id="proj-default",
+        ))
+        s1 = hs.create_study(hyp.hypothesis_id, StudyCreateRequest(
+            title="Pathway Search Test",
+            analysis_type="pathway_search",
+            objective="Confirm path.",
+            parameters={"source_id": 10001, "target_id": 800146, "max_hops": 2},
+            expected_null_outcome="No paths.",
+            testable_criteria=[{"metric": "path_count", "operator": ">=", "value": 1}],
+        ))
+
+        # Preview Campaign
+        preview = rss.preview_campaign("proj-default", [s1.study_id])
+        assert preview.total_studies == 1
+        assert preview.can_execute is True
+        assert len(preview.ordered_studies) == 1
+
+        # Execute Campaign
+        camp = await rss.execute_campaign("proj-default", CampaignCreateRequest(
+            study_ids=[s1.study_id],
+            max_concurrent=1,
+        ))
+        assert camp.status == "completed"
+        assert camp.completed_count == 1
+        assert camp.failed_count == 0
+        assert len(camp.study_results) == 1
+        assert camp.study_results[0].verdict == "criteria_met"
+
+    def test_synthesis_markdown_and_csv_reports(self):
+        from backend.models import HypothesisCreateRequest
+        _, _, hs, rss = self._make_services()
+
+        hs.create_hypothesis(HypothesisCreateRequest(
+            title="Report Export Hypothesis",
+            statement="Testing synthesis report generation.",
+            project_id="proj-default",
+        ))
+
+        md = rss.generate_synthesis_markdown("proj-default")
+        assert "# Research Program Synthesis Report" in md
+        assert "Cross-Hypothesis Evidence Synthesis" in md
+        assert "Contradiction & Inconsistency Review Queue" in md
+        assert "Evidence Gap Analysis & Open Items" in md
+        assert "Scientific Limitations & Disclosure" in md
+
+        csv_gaps = rss.generate_synthesis_csv("proj-default", table_type="gaps")
+        assert "gap_id,category,description" in csv_gaps
+
+        csv_agenda = rss.generate_synthesis_csv("proj-default", table_type="agenda")
+        assert "action_id,title,action_type" in csv_agenda
+
+
+
 
 
 

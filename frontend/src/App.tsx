@@ -7,7 +7,7 @@
  * All neuron data comes from the real MaleCNS v1.0 dataset via the backend API.
  */
 import React, { useCallback, useState } from 'react';
-import { Network, GitBranch, Bug, FlaskConical, BookOpen, Sparkles, Lightbulb, BookMarked } from 'lucide-react';
+import { Network, GitBranch, Bug, FlaskConical, BookOpen, Sparkles, Lightbulb, BookMarked, FolderKanban } from 'lucide-react';
 import { StatusPill } from './components/StatusPill';
 import { ExplorerPanel } from './components/ExplorerPanel';
 import { ConnectomeView } from './components/ConnectomeView';
@@ -20,6 +20,7 @@ import { KnowledgeExplorer } from './components/KnowledgeExplorer';
 import { AskNeuroQuery } from './components/AskNeuroQuery';
 import { HypothesisWorkbench } from './components/HypothesisWorkbench';
 import { ResearchNotebook } from './components/ResearchNotebook';
+import { ResearchProgramStudio } from './components/ResearchProgramStudio';
 import type {
   NeuronSearchResult,
   PathwaySearchResponse,
@@ -28,7 +29,7 @@ import type {
 } from './types';
 
 export default function App() {
-  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger' | 'perturbation' | 'knowledge' | 'neuroquery' | 'hypotheses' | 'notebook'>('explorer');
+  const [workspace, setWorkspace] = useState<'explorer' | 'pathway' | 'debugger' | 'perturbation' | 'knowledge' | 'neuroquery' | 'hypotheses' | 'notebook' | 'program'>('explorer');
   const [selectedBodyId, setSelectedBodyId] = useState<number | null>(null);
   const [contextExecutionId, setContextExecutionId] = useState<string | null>(null);
   const [contextRobustnessId, setContextRobustnessId] = useState<string | null>(null);
@@ -159,6 +160,15 @@ export default function App() {
           >
             <BookMarked size={14} />
             <span>Research Notebook</span>
+          </button>
+          <button
+            id="btn-nav-program"
+            className={`btn btn-sm ${workspace === 'program' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setWorkspace('program')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <FolderKanban size={14} />
+            <span>Program Studio</span>
           </button>
         </div>
 
@@ -503,6 +513,30 @@ export default function App() {
           >
             <ResearchNotebook
               onOpenHypothesis={(hypId) => {
+                setWorkspace('hypotheses');
+              }}
+              onNavigateToWorkbench={() => {
+                setWorkspace('hypotheses');
+              }}
+            />
+          </section>
+        )}
+
+        {workspace === 'program' && (
+          <section
+            style={{
+              gridColumn: '1 / 4',
+              position: 'relative',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
+              height: '100%',
+            }}
+            aria-label="Research Program Studio Workspace"
+          >
+            <ResearchProgramStudio
+              onNavigateToHypothesis={(hypId) => {
                 setWorkspace('hypotheses');
               }}
               onNavigateToWorkbench={() => {

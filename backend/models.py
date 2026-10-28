@@ -1436,3 +1436,269 @@ class ResearchNotebookExport(BaseModel):
     hypotheses: list[HypothesisRecord] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+
+# ── V12: Research Program Synthesis, Evidence Gap Analysis & Prioritization ──
+
+class StudyDependencyType(str, Enum):
+    required_prerequisite = "required_prerequisite"
+    optional_reference = "optional_reference"
+    comparison_dependency = "comparison_dependency"
+    evidence_dependency = "evidence_dependency"
+
+
+class StudyExecutionState(str, Enum):
+    draft = "draft"
+    blocked = "blocked"
+    ready = "ready"
+    running = "running"
+    completed = "completed"
+    partial = "partial"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class StudyDependency(BaseModel):
+    """A directed dependency relationship between two follow-up computational studies."""
+    dependency_id: str
+    study_id: str  # Dependent study
+    prerequisite_study_id: str  # Upstream prerequisite study
+    dependency_type: StudyDependencyType = StudyDependencyType.required_prerequisite
+    description: Optional[str] = ""
+    is_satisfied: bool = False
+    created_at: str
+
+
+class DependencyCreateRequest(BaseModel):
+    study_id: str
+    prerequisite_study_id: str
+    dependency_type: StudyDependencyType = StudyDependencyType.required_prerequisite
+    description: Optional[str] = ""
+
+
+class ContradictionSeverity(str, Enum):
+    confirmed_record_mismatch = "confirmed_record_mismatch"
+    configuration_difference = "configuration_difference"
+    dataset_version_difference = "dataset_version_difference"
+    scope_difference = "scope_difference"
+    incomplete_result = "incomplete_result"
+    needs_manual_review = "needs_manual_review"
+
+
+class ContradictionReviewStatus(str, Enum):
+    open = "open"
+    confirmed_inconsistency = "confirmed_inconsistency"
+    explained_by_configuration = "explained_by_configuration"
+    explained_by_scope = "explained_by_scope"
+    insufficient_information = "insufficient_information"
+    not_a_contradiction = "not_a_contradiction"
+    resolved = "resolved"
+
+
+class ContradictionRecord(BaseModel):
+    """A detected inconsistency or conflicting claim surfaced for researcher review."""
+    contradiction_id: str
+    project_id: str
+    category: ContradictionSeverity
+    description: str
+    affected_hypothesis_ids: list[str] = Field(default_factory=list)
+    affected_evidence_ids: list[str] = Field(default_factory=list)
+    affected_study_ids: list[str] = Field(default_factory=list)
+    mismatch_details: dict[str, Any] = Field(default_factory=dict)
+    detection_rule: str
+    required_resolution_info: str
+    review_status: ContradictionReviewStatus = ContradictionReviewStatus.open
+    resolution_rationale: Optional[str] = None
+    resolved_by: Optional[str] = None
+    resolved_at: Optional[str] = None
+    created_at: str
+
+
+class ContradictionReviewRequest(BaseModel):
+    review_status: ContradictionReviewStatus
+    resolution_rationale: str
+    resolved_by: Optional[str] = "researcher"
+
+
+class GapCategory(str, Enum):
+    missing_source_evidence = "missing_source_evidence"
+    insufficient_structural_evidence = "insufficient_structural_evidence"
+    missing_robustness_evaluation = "missing_robustness_evaluation"
+    incomplete_followup_study = "incomplete_followup_study"
+    conflicting_results = "conflicting_results"
+    provenance_gap = "provenance_gap"
+    coverage_limitation = "coverage_limitation"
+    unverified_interpretation = "unverified_interpretation"
+
+
+class GapStatus(str, Enum):
+    open = "open"
+    in_progress = "in_progress"
+    resolved = "resolved"
+    not_actionable = "not_actionable"
+
+
+class EvidenceGap(BaseModel):
+    """A concrete uninvestigated area, missing evidence link, or unverified assumption."""
+    gap_id: str
+    project_id: str
+    category: GapCategory
+    description: str
+    affected_hypothesis_ids: list[str] = Field(default_factory=list)
+    affected_claim_or_evidence_ids: list[str] = Field(default_factory=list)
+    source_records_inspected: list[str] = Field(default_factory=list)
+    detection_rule: str
+    priority_score: float = 0.5
+    required_information: str
+    is_actionable: bool = True
+    suggested_action_type: str = "none"  # "run_robustness" | "pathway_search" | "perturbation" | "inspect_mappings" | "manual_curation"
+    suggested_action_description: str = ""
+    suggested_study_parameters: Optional[dict[str, Any]] = None
+    status: GapStatus = GapStatus.open
+    resolution_notes: Optional[str] = None
+    resolved_at: Optional[str] = None
+    created_at: str
+
+
+class GapUpdateRequest(BaseModel):
+    status: GapStatus
+    resolution_notes: Optional[str] = None
+
+
+class ResearchActionRecommendation(BaseModel):
+    """A prioritized, actionable computational study addressing one or more project evidence gaps."""
+    action_id: str
+    project_id: str
+    action_type: str  # "pathway_search" | "robustness_sweep" | "perturbation" | "compare_investigations" | "inspect_mappings"
+    title: str
+    description: str
+    target_tool: str
+    target_hypothesis_ids: list[str] = Field(default_factory=list)
+    addressed_gap_ids: list[str] = Field(default_factory=list)
+    prerequisite_action_ids: list[str] = Field(default_factory=list)
+    suggested_parameters: dict[str, Any] = Field(default_factory=dict)
+    expected_outputs: str
+    scientific_limitations: str
+    estimated_cost_label: str = "low"  # "low" | "medium" | "high" | "unavailable"
+    cost_factors: dict[str, Any] = Field(default_factory=dict)
+    priority_score: float  # [0.0, 1.0]
+    priority_breakdown: dict[str, float] = Field(default_factory=dict)
+    is_ready: bool = True
+    blocking_reasons: list[str] = Field(default_factory=list)
+
+
+class ResearchAgenda(BaseModel):
+    """A ranked, dependency-aware agenda of follow-up investigations for a project."""
+    agenda_id: str
+    project_id: str
+    created_at: str
+    priority_weights: dict[str, float] = Field(default_factory=dict)
+    recommended_actions: list[ResearchActionRecommendation] = Field(default_factory=list)
+    total_actions: int = 0
+    ready_actions: int = 0
+    blocked_actions: int = 0
+
+
+class AgendaGenerateRequest(BaseModel):
+    weight_gap_importance: float = 0.30
+    weight_hypothesis_coverage: float = 0.25
+    weight_uncertainty_reduction: float = 0.20
+    weight_feasibility: float = 0.15
+    weight_cost_penalty: float = 0.10
+    included_hypothesis_ids: Optional[list[str]] = None
+
+
+class CampaignStudyPlan(BaseModel):
+    """Execution blueprint for a study scheduled within a research campaign."""
+    study_id: str
+    hypothesis_id: str
+    title: str
+    analysis_type: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    prerequisites: list[str] = Field(default_factory=list)
+    execution_order_index: int = 0
+    is_ready: bool = True
+    blocking_reasons: list[str] = Field(default_factory=list)
+
+
+class CampaignPreviewResponse(BaseModel):
+    """Pre-flight preview of a multi-study research campaign."""
+    project_id: str
+    selected_study_ids: list[str] = Field(default_factory=list)
+    ordered_studies: list[CampaignStudyPlan] = Field(default_factory=list)
+    total_studies: int
+    ready_studies: int
+    blocked_studies: int
+    estimated_scenarios: int = 0
+    estimated_resource_summary: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    can_execute: bool = True
+
+
+class CampaignCreateRequest(BaseModel):
+    study_ids: list[str]
+    max_concurrent: int = 1
+    stop_on_first_failure: bool = False
+
+
+class CampaignStudyResult(BaseModel):
+    """Result of an individual study executed within a research campaign."""
+    study_id: str
+    hypothesis_id: str
+    execution_id: Optional[str] = None
+    status: str  # "completed" | "failed" | "skipped" | "blocked"
+    verdict: Optional[str] = None
+    evaluation_summary: Optional[str] = None
+    error_message: Optional[str] = None
+    duration_ms: float = 0.0
+
+
+class ResearchCampaign(BaseModel):
+    """A controlled, reproducible batch campaign executing dependency-aware studies."""
+    campaign_id: str
+    project_id: str
+    status: str  # "previewed" | "running" | "completed" | "partially_completed" | "failed" | "cancelled"
+    selected_study_ids: list[str] = Field(default_factory=list)
+    execution_order: list[str] = Field(default_factory=list)
+    study_results: list[CampaignStudyResult] = Field(default_factory=list)
+    total_studies: int
+    completed_count: int = 0
+    failed_count: int = 0
+    skipped_count: int = 0
+    start_time: str
+    completion_time: Optional[str] = None
+    summary: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ResearchSynthesis(BaseModel):
+    """Cross-hypothesis evidence synthesis, gap inventory, and consistency evaluation."""
+    synthesis_id: str
+    project_id: str
+    project_title: str
+    project_objective: str
+    generated_at: str
+    is_fresh: bool = True
+    included_hypothesis_ids: list[str] = Field(default_factory=list)
+    total_hypotheses: int
+    status_distribution: dict[str, int] = Field(default_factory=dict)
+    shared_evidence_sources: list[dict[str, Any]] = Field(default_factory=list)
+    independent_evidence_sources: list[dict[str, Any]] = Field(default_factory=list)
+    shared_concepts: list[dict[str, Any]] = Field(default_factory=list)
+    distinct_concepts: list[dict[str, Any]] = Field(default_factory=list)
+    shared_candidate_neuron_ids: list[int] = Field(default_factory=list)
+    distinct_candidate_neuron_ids: list[int] = Field(default_factory=list)
+    shared_directed_edges: list[list[int]] = Field(default_factory=list)
+    distinct_directed_edges: list[list[int]] = Field(default_factory=list)
+    active_contradictions: list[ContradictionRecord] = Field(default_factory=list)
+    open_gaps: list[EvidenceGap] = Field(default_factory=list)
+    completed_studies_count: int = 0
+    agenda_summary: Optional[dict[str, Any]] = None
+    manifest: dict[str, Any] = Field(default_factory=dict)
+    caveats: list[str] = Field(default_factory=list)
+
+
+class SynthesisGenerateRequest(BaseModel):
+    included_hypothesis_ids: Optional[list[str]] = None
+    include_archived: bool = False
+    refresh: bool = False
+

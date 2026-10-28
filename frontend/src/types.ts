@@ -1407,3 +1407,279 @@ export interface ResearchNotebookExport {
   hypotheses: HypothesisRecord[];
   metadata: Record<string, any>;
 }
+
+// ── V12: Research Program Synthesis, Evidence Gaps & Prioritization ───────────
+
+export type StudyDependencyType =
+  | 'required_prerequisite'
+  | 'optional_reference'
+  | 'comparison_dependency'
+  | 'evidence_dependency';
+
+export type StudyExecutionState =
+  | 'draft'
+  | 'blocked'
+  | 'ready'
+  | 'running'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'cancelled';
+
+export interface StudyDependency {
+  dependency_id: string;
+  study_id: string;
+  prerequisite_study_id: string;
+  dependency_type: StudyDependencyType;
+  description?: string;
+  is_satisfied: boolean;
+  created_at: string;
+}
+
+export interface DependencyCreateRequest {
+  study_id: string;
+  prerequisite_study_id: string;
+  dependency_type?: StudyDependencyType;
+  description?: string;
+}
+
+export type ContradictionSeverity =
+  | 'confirmed_record_mismatch'
+  | 'configuration_difference'
+  | 'dataset_version_difference'
+  | 'scope_difference'
+  | 'incomplete_result'
+  | 'needs_manual_review';
+
+export type ContradictionReviewStatus =
+  | 'open'
+  | 'confirmed_inconsistency'
+  | 'explained_by_configuration'
+  | 'explained_by_scope'
+  | 'insufficient_information'
+  | 'not_a_contradiction'
+  | 'resolved';
+
+export interface ContradictionRecord {
+  contradiction_id: string;
+  project_id: string;
+  category: ContradictionSeverity;
+  description: string;
+  affected_hypothesis_ids: string[];
+  affected_evidence_ids: string[];
+  affected_study_ids: string[];
+  mismatch_details?: Record<string, any>;
+  detection_rule: string;
+  required_resolution_info: string;
+  review_status: ContradictionReviewStatus;
+  resolution_rationale?: string | null;
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+}
+
+export interface ContradictionReviewRequest {
+  review_status: ContradictionReviewStatus;
+  resolution_rationale: string;
+  resolved_by?: string;
+}
+
+export type GapCategory =
+  | 'missing_source_evidence'
+  | 'insufficient_structural_evidence'
+  | 'missing_robustness_evaluation'
+  | 'incomplete_followup_study'
+  | 'conflicting_results'
+  | 'provenance_gap'
+  | 'coverage_limitation'
+  | 'unverified_interpretation';
+
+export type GapStatus = 'open' | 'in_progress' | 'resolved' | 'not_actionable';
+
+export interface EvidenceGap {
+  gap_id: string;
+  project_id: string;
+  category: GapCategory;
+  description: string;
+  affected_hypothesis_ids: string[];
+  affected_claim_or_evidence_ids: string[];
+  source_records_inspected: string[];
+  detection_rule: string;
+  priority_score: number;
+  required_information: string;
+  is_actionable: boolean;
+  suggested_action_type: string;
+  suggested_action_description: string;
+  suggested_study_parameters?: Record<string, any> | null;
+  status: GapStatus;
+  resolution_notes?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+}
+
+export interface GapUpdateRequest {
+  status: GapStatus;
+  resolution_notes?: string;
+}
+
+export interface ResearchActionRecommendation {
+  action_id: string;
+  project_id: string;
+  action_type: string;
+  title: string;
+  description: string;
+  target_tool: string;
+  target_hypothesis_ids: string[];
+  addressed_gap_ids: string[];
+  prerequisite_action_ids: string[];
+  suggested_parameters: Record<string, any>;
+  expected_outputs: string;
+  scientific_limitations: string;
+  estimated_cost_label: 'low' | 'medium' | 'high' | 'unavailable' | string;
+  cost_factors: Record<string, any>;
+  priority_score: number;
+  priority_breakdown: Record<string, number>;
+  is_ready: boolean;
+  blocking_reasons: string[];
+}
+
+export interface ResearchAgenda {
+  agenda_id: string;
+  project_id: string;
+  created_at: string;
+  priority_weights: Record<string, number>;
+  recommended_actions: ResearchActionRecommendation[];
+  total_actions: number;
+  ready_actions: number;
+  blocked_actions: number;
+}
+
+export interface AgendaGenerateRequest {
+  weight_gap_importance?: number;
+  weight_hypothesis_coverage?: number;
+  weight_uncertainty_reduction?: number;
+  weight_feasibility?: number;
+  weight_cost_penalty?: number;
+  included_hypothesis_ids?: string[];
+}
+
+export interface CampaignStudyPlan {
+  study_id: string;
+  hypothesis_id: string;
+  title: string;
+  analysis_type: string;
+  parameters: Record<string, any>;
+  prerequisites: string[];
+  execution_order_index: number;
+  is_ready: boolean;
+  blocking_reasons: string[];
+}
+
+export interface CampaignPreviewResponse {
+  project_id: string;
+  selected_study_ids: string[];
+  ordered_studies: CampaignStudyPlan[];
+  total_studies: number;
+  ready_studies: number;
+  blocked_studies: number;
+  estimated_scenarios: number;
+  estimated_resource_summary: Record<string, any>;
+  warnings: string[];
+  can_execute: boolean;
+}
+
+export interface CampaignCreateRequest {
+  study_ids: string[];
+  max_concurrent?: number;
+  stop_on_first_failure?: boolean;
+}
+
+export interface CampaignStudyResult {
+  study_id: string;
+  hypothesis_id: string;
+  execution_id?: string | null;
+  status: 'completed' | 'failed' | 'skipped' | 'blocked' | string;
+  verdict?: string | null;
+  evaluation_summary?: string | null;
+  error_message?: string | null;
+  duration_ms?: number;
+}
+
+export interface ResearchCampaign {
+  campaign_id: string;
+  project_id: string;
+  status: 'previewed' | 'running' | 'completed' | 'partially_completed' | 'failed' | 'cancelled' | string;
+  selected_study_ids: string[];
+  execution_order: string[];
+  study_results: CampaignStudyResult[];
+  total_studies: number;
+  completed_count: number;
+  failed_count: number;
+  skipped_count: number;
+  start_time: string;
+  completion_time?: string | null;
+  summary: string;
+  warnings?: string[];
+}
+
+export interface ResearchSynthesis {
+  synthesis_id: string;
+  project_id: string;
+  project_title: string;
+  project_objective: string;
+  generated_at: string;
+  is_fresh: boolean;
+  included_hypothesis_ids: string[];
+  total_hypotheses: number;
+  status_distribution: Record<string, number>;
+  shared_evidence_sources: Array<{
+    source_identifier: string;
+    citation_count: number;
+    citing_hypothesis_ids: string[];
+    evidence_types: string[];
+    is_shared: boolean;
+    is_independent: boolean;
+    scientific_warning: string;
+  }>;
+  independent_evidence_sources: Array<{
+    source_identifier: string;
+    citation_count: number;
+    citing_hypothesis_ids: string[];
+    evidence_types: string[];
+    is_shared: boolean;
+    is_independent: boolean;
+    scientific_warning: string;
+  }>;
+  shared_concepts: Array<{
+    concept_id: string;
+    name: string;
+    verified: boolean;
+    citation_count: number;
+    citing_hypothesis_ids: string[];
+    caveat: string;
+  }>;
+  distinct_concepts: Array<{
+    concept_id: string;
+    name: string;
+    verified: boolean;
+    citation_count: number;
+    citing_hypothesis_ids: string[];
+    caveat: string;
+  }>;
+  shared_candidate_neuron_ids: number[];
+  distinct_candidate_neuron_ids: number[];
+  shared_directed_edges: Array<[number, number]>;
+  distinct_directed_edges: Array<[number, number]>;
+  active_contradictions: ContradictionRecord[];
+  open_gaps: EvidenceGap[];
+  completed_studies_count: number;
+  agenda_summary?: Record<string, any> | null;
+  manifest: Record<string, any>;
+  caveats: string[];
+}
+
+export interface SynthesisGenerateRequest {
+  included_hypothesis_ids?: string[];
+  include_archived?: boolean;
+  refresh?: boolean;
+}

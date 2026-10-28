@@ -61,6 +61,19 @@ import type {
   ResearchProject,
   ProjectCreateRequest,
   ResearchNotebookExport,
+  ResearchSynthesis,
+  SynthesisGenerateRequest,
+  ContradictionRecord,
+  ContradictionReviewRequest,
+  EvidenceGap,
+  GapUpdateRequest,
+  ResearchAgenda,
+  AgendaGenerateRequest,
+  StudyDependency,
+  DependencyCreateRequest,
+  CampaignPreviewResponse,
+  CampaignCreateRequest,
+  ResearchCampaign,
 } from './types';
 
 const BASE = '';  // Vite proxy handles /api and /health
@@ -472,6 +485,144 @@ export const api = {
       exportData,
       signal
     );
+  },
+
+  /* V12: Research Program Synthesis, Gaps, Agenda & Campaigns */
+  generateProjectSynthesis(
+    projectId: string,
+    req?: SynthesisGenerateRequest,
+    signal?: AbortSignal
+  ): Promise<ResearchSynthesis> {
+    return post<ResearchSynthesis>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/synthesis`,
+      req || {},
+      signal
+    );
+  },
+
+  getProjectSynthesis(projectId: string, signal?: AbortSignal): Promise<ResearchSynthesis> {
+    return get<ResearchSynthesis>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/synthesis`,
+      signal
+    );
+  },
+
+  reviewProjectContradiction(
+    projectId: string,
+    contradictionId: string,
+    req: ContradictionReviewRequest,
+    signal?: AbortSignal
+  ): Promise<ContradictionRecord> {
+    return post<ContradictionRecord>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/contradictions/${encodeURIComponent(contradictionId)}/review`,
+      req,
+      signal
+    );
+  },
+
+  updateProjectEvidenceGap(
+    projectId: string,
+    gapId: string,
+    req: GapUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<EvidenceGap> {
+    return put<EvidenceGap>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/gaps/${encodeURIComponent(gapId)}`,
+      req,
+      signal
+    );
+  },
+
+  generateProjectAgenda(
+    projectId: string,
+    req?: AgendaGenerateRequest,
+    signal?: AbortSignal
+  ): Promise<ResearchAgenda> {
+    return post<ResearchAgenda>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/agenda`,
+      req || {},
+      signal
+    );
+  },
+
+  getProjectAgenda(projectId: string, signal?: AbortSignal): Promise<ResearchAgenda> {
+    return get<ResearchAgenda>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/agenda`,
+      signal
+    );
+  },
+
+  listProjectStudyDependencies(projectId: string, signal?: AbortSignal): Promise<StudyDependency[]> {
+    return get<StudyDependency[]>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/dependencies`,
+      signal
+    );
+  },
+
+  createProjectStudyDependency(
+    projectId: string,
+    req: DependencyCreateRequest,
+    signal?: AbortSignal
+  ): Promise<StudyDependency> {
+    return post<StudyDependency>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/dependencies`,
+      req,
+      signal
+    );
+  },
+
+  deleteProjectStudyDependency(
+    projectId: string,
+    dependencyId: string,
+    signal?: AbortSignal
+  ): Promise<{ status: string; dependency_id: string }> {
+    return del<{ status: string; dependency_id: string }>(
+      `/api/research/projects/${encodeURIComponent(projectId)}/dependencies/${encodeURIComponent(dependencyId)}`,
+      signal
+    );
+  },
+
+  previewResearchCampaign(
+    projectId: string,
+    studyIds: string[],
+    signal?: AbortSignal
+  ): Promise<CampaignPreviewResponse> {
+    return post<CampaignPreviewResponse>(
+      `/api/research/campaigns/preview?project_id=${encodeURIComponent(projectId)}`,
+      studyIds,
+      signal
+    );
+  },
+
+  executeResearchCampaign(
+    projectId: string,
+    req: CampaignCreateRequest,
+    signal?: AbortSignal
+  ): Promise<ResearchCampaign> {
+    return post<ResearchCampaign>(
+      `/api/research/campaigns/execute?project_id=${encodeURIComponent(projectId)}`,
+      req,
+      signal
+    );
+  },
+
+  getResearchCampaign(campaignId: string, signal?: AbortSignal): Promise<ResearchCampaign> {
+    return get<ResearchCampaign>(
+      `/api/research/campaigns/${encodeURIComponent(campaignId)}`,
+      signal
+    );
+  },
+
+  async getProjectSynthesisMarkdownReport(projectId: string, signal?: AbortSignal): Promise<string> {
+    const res = await fetch(`${BASE}/api/research/projects/${encodeURIComponent(projectId)}/report`, { signal });
+    if (!res.ok) throw new Error(`Report generation failed: HTTP ${res.status}`);
+    return res.text();
+  },
+
+  async exportProjectSynthesisCsv(projectId: string, tableType: string = 'gaps', signal?: AbortSignal): Promise<string> {
+    const res = await fetch(`${BASE}/api/research/projects/${encodeURIComponent(projectId)}/export/csv?table_type=${encodeURIComponent(tableType)}`, { signal });
+    if (!res.ok) throw new Error(`CSV export failed: HTTP ${res.status}`);
+    return res.text();
   },
 };
 

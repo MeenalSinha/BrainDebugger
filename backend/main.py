@@ -74,6 +74,19 @@ from backend.models import (
     StudyCreateRequest,
     StudyEvaluationResult,
     StudyExecuteRequest,
+    AgendaGenerateRequest,
+    CampaignCreateRequest,
+    CampaignPreviewResponse,
+    ContradictionRecord,
+    ContradictionReviewRequest,
+    DependencyCreateRequest,
+    EvidenceGap,
+    GapUpdateRequest,
+    ResearchAgenda,
+    ResearchCampaign,
+    ResearchSynthesis,
+    StudyDependency,
+    SynthesisGenerateRequest,
 )
 from backend.perturbation_service import PerturbationService
 from backend.knowledge_service import KnowledgeService
@@ -81,6 +94,7 @@ from backend.query_planner_service import QueryPlannerService
 from backend.circuit_discovery_service import CircuitDiscoveryService
 from backend.robustness_analysis_service import RobustnessAnalysisService
 from backend.hypothesis_service import HypothesisService
+from backend.research_synthesis_service import ResearchSynthesisService
 from backend.service import ConnectomeService
 
 logger = logging.getLogger(__name__)
@@ -94,12 +108,13 @@ _planner_service: Optional[QueryPlannerService] = None
 _circuit_discovery_service: Optional[CircuitDiscoveryService] = None
 _robustness_service: Optional[RobustnessAnalysisService] = None
 _hypothesis_service: Optional[HypothesisService] = None
+_research_synthesis_service: Optional[ResearchSynthesisService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data files once at startup; release on shutdown."""
-    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service, _robustness_service, _hypothesis_service
+    global _provider, _service, _perturbation_service, _knowledge_service, _planner_service, _circuit_discovery_service, _robustness_service, _hypothesis_service, _research_synthesis_service
     settings = get_settings()
     configure_logging(settings)
     logger.info("BrainDebugger starting — %s", settings.safe_repr())
@@ -136,6 +151,11 @@ async def lifespan(app: FastAPI):
         connectome_service=_service,
         perturbation_service=_perturbation_service,
         knowledge_service=_knowledge_service,
+        data_provider=_provider,
+    )
+    _research_synthesis_service = ResearchSynthesisService(
+        hypothesis_svc=_hypothesis_service,
+        knowledge_svc=_knowledge_service,
         data_provider=_provider,
     )
     logger.info("BrainDebugger ready.")
@@ -270,6 +290,21 @@ def get_hypothesis_service() -> HypothesisService:
 
 
 HypothesisDep = Annotated[HypothesisService, Depends(get_hypothesis_service)]
+
+
+def get_research_synthesis_service() -> ResearchSynthesisService:
+    if _research_synthesis_service is None or not _provider.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "service_unavailable",
+                "message": "Research synthesis service is not loaded or connectome dataset is not ready.",
+            },
+        )
+    return _research_synthesis_service
+
+
+ResearchSynthesisDep = Annotated[ResearchSynthesisService, Depends(get_research_synthesis_service)]
 
 
 
@@ -1149,9 +1184,12 @@ async def list_hypotheses(
 async def create_hypothesis(
     req: HypothesisCreateRequest,
     hypothesis_svc: HypothesisDep,
+    project_id: Optional[str] = Query(None, description="Optional target project ID"),
 ) -> HypothesisRecord:
     """Formulates a new hypothesis with initial evidence, alternative biases, and boundary conditions."""
     try:
+        if project_id and not req.project_id:
+            req.project_id = project_id
         return hypothesis_svc.create_hypothesis(req)
     except Exception as exc:
         logger.exception("Error creating hypothesis: %s", exc)
@@ -1444,3 +1482,337 @@ async def import_research_notebook(
 ) -> dict[str, Any]:
     """Imports validated projects and hypotheses into the workspace."""
     return hypothesis_svc.import_notebook(export_data)
+
+
+# ── V12: Research Program Synthesis, Evidence Gaps & Prioritization ───────────
+
+@app.post(
+    "/api/research/projects/{project_id}/synthesis",
+    response_model=ResearchSynthesis,
+    summary="Generate cross-hypothesis evidence synthesis and gap inventory",
+    tags=["Research Program Studio"],
+)
+async def generate_project_synthesis(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+    req: Optional[SynthesisGenerateRequest] = None,
+) -> ResearchSynthesis:
+    """Synthesizes evidence, concepts, neurons, contradictions, and gaps for a project."""
+    try:
+        return synthesis_svc.generate_synthesis(project_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+
+
+@app.get(
+    "/api/research/projects/{project_id}/synthesis",
+    response_model=ResearchSynthesis,
+    summary="Retrieve current synthesis snapshot for a project",
+    tags=["Research Program Studio"],
+)
+async def get_project_synthesis(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+) -> ResearchSynthesis:
+    """Returns the latest stored synthesis snapshot or computes a fresh one."""
+    synth = synthesis_svc.get_synthesis(project_id)
+    if not synth:
+        try:
+            return synthesis_svc.generate_synthesis(project_id)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+            )
+    return synth
+
+
+@app.post(
+    "/api/research/projects/{project_id}/contradictions/{contradiction_id}/review",
+    response_model=ContradictionRecord,
+    summary="Review and classify a detected contradiction or mismatch",
+    tags=["Research Program Studio"],
+)
+async def review_project_contradiction(
+    project_id: str,
+    contradiction_id: str,
+    req: ContradictionReviewRequest,
+    synthesis_svc: ResearchSynthesisDep,
+) -> ContradictionRecord:
+    """Records researcher review status and resolution rationale."""
+    try:
+        return synthesis_svc.review_contradiction(project_id, contradiction_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Contradiction '{contradiction_id}' not found in project '{project_id}'."},
+        )
+
+
+@app.put(
+    "/api/research/projects/{project_id}/gaps/{gap_id}",
+    response_model=EvidenceGap,
+    summary="Update evidence gap status and resolution notes",
+    tags=["Research Program Studio"],
+)
+async def update_project_evidence_gap(
+    project_id: str,
+    gap_id: str,
+    req: GapUpdateRequest,
+    synthesis_svc: ResearchSynthesisDep,
+) -> EvidenceGap:
+    """Updates evidence gap lifecycle status and notes."""
+    try:
+        return synthesis_svc.update_gap(project_id, gap_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Evidence gap '{gap_id}' not found in project '{project_id}'."},
+        )
+
+
+@app.post(
+    "/api/research/projects/{project_id}/agenda",
+    response_model=ResearchAgenda,
+    summary="Generate prioritized research agenda of follow-up investigations",
+    tags=["Research Program Studio"],
+)
+async def generate_project_agenda(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+    req: Optional[AgendaGenerateRequest] = None,
+) -> ResearchAgenda:
+    """Computes a transparently prioritized research agenda addressing open gaps."""
+    try:
+        return synthesis_svc.generate_agenda(project_id, req)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+
+
+@app.get(
+    "/api/research/projects/{project_id}/agenda",
+    response_model=ResearchAgenda,
+    summary="Retrieve current research agenda for a project",
+    tags=["Research Program Studio"],
+)
+async def get_project_agenda(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+) -> ResearchAgenda:
+    """Returns the latest agenda or generates a fresh one."""
+    agenda = synthesis_svc.get_agenda(project_id)
+    if not agenda:
+        try:
+            return synthesis_svc.generate_agenda(project_id)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+            )
+    return agenda
+
+
+@app.get(
+    "/api/research/projects/{project_id}/dependencies",
+    response_model=list[StudyDependency],
+    summary="List all study dependency edges in a project",
+    tags=["Research Program Studio"],
+)
+async def list_project_study_dependencies(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+) -> list[StudyDependency]:
+    """Returns registered study dependencies."""
+    return synthesis_svc.list_dependencies(project_id)
+
+
+@app.post(
+    "/api/research/projects/{project_id}/dependencies",
+    response_model=StudyDependency,
+    status_code=201,
+    summary="Register a directed prerequisite dependency between studies",
+    tags=["Research Program Studio"],
+)
+async def create_project_study_dependency(
+    project_id: str,
+    req: DependencyCreateRequest,
+    synthesis_svc: ResearchSynthesisDep,
+) -> StudyDependency:
+    """Adds dependency edge with cycle detection."""
+    try:
+        return synthesis_svc.create_dependency(project_id, req)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_dependency", "message": str(e)},
+        )
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+
+
+@app.delete(
+    "/api/research/projects/{project_id}/dependencies/{dependency_id}",
+    summary="Remove a study dependency edge",
+    tags=["Research Program Studio"],
+)
+async def delete_project_study_dependency(
+    project_id: str,
+    dependency_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+) -> dict[str, Any]:
+    """Removes a registered dependency edge."""
+    success = synthesis_svc.delete_dependency(project_id, dependency_id)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Dependency '{dependency_id}' not found."},
+        )
+    return {"status": "deleted", "dependency_id": dependency_id}
+
+
+@app.post(
+    "/api/research/projects/{project_id}/campaigns/preview",
+    response_model=CampaignPreviewResponse,
+    summary="Pre-flight validation and preview of a multi-study campaign",
+    tags=["Research Program Studio"],
+)
+@app.post(
+    "/api/research/campaigns/preview",
+    response_model=CampaignPreviewResponse,
+    summary="Pre-flight validation and preview of a multi-study campaign (alias)",
+    tags=["Research Program Studio"],
+)
+async def preview_research_campaign(
+    study_ids: list[str],
+    synthesis_svc: ResearchSynthesisDep,
+    project_id: Optional[str] = None,
+) -> CampaignPreviewResponse:
+    """Validates dependencies, topological order, and resource budgets."""
+    if not project_id:
+        raise HTTPException(status_code=400, detail={"error": "missing_project_id", "message": "project_id required"})
+    try:
+        return synthesis_svc.preview_campaign(project_id, study_ids)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+
+
+@app.post(
+    "/api/research/projects/{project_id}/campaigns/execute",
+    response_model=ResearchCampaign,
+    summary="Execute a confirmed multi-study research campaign",
+    tags=["Research Program Studio"],
+)
+@app.post(
+    "/api/research/campaigns/execute",
+    response_model=ResearchCampaign,
+    summary="Execute a confirmed multi-study research campaign (alias)",
+    tags=["Research Program Studio"],
+)
+async def execute_research_campaign(
+    req: CampaignCreateRequest,
+    synthesis_svc: ResearchSynthesisDep,
+    project_id: Optional[str] = None,
+) -> ResearchCampaign:
+    """Executes a confirmed campaign sequentially with dependency-aware failure isolation."""
+    if not project_id:
+        raise HTTPException(status_code=400, detail={"error": "missing_project_id", "message": "project_id required"})
+    try:
+        return await synthesis_svc.execute_campaign(project_id, req)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_campaign", "message": str(e)},
+        )
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+
+
+@app.get(
+    "/api/research/campaigns/{campaign_id}",
+    response_model=ResearchCampaign,
+    summary="Retrieve completed or in-progress campaign details",
+    tags=["Research Program Studio"],
+)
+async def get_research_campaign(
+    campaign_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+) -> ResearchCampaign:
+    """Retrieves campaign status and per-study results."""
+    camp = synthesis_svc.get_campaign(campaign_id)
+    if not camp:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Campaign '{campaign_id}' not found."},
+        )
+    return camp
+
+
+@app.get(
+    "/api/research/projects/{project_id}/synthesis/report",
+    response_class=PlainTextResponse,
+    summary="Export formal Markdown research program synthesis report",
+    tags=["Research Program Studio"],
+)
+@app.get(
+    "/api/research/projects/{project_id}/report",
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+)
+async def get_project_synthesis_markdown_report(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+) -> str:
+    """Generates formatted Markdown research program synthesis report."""
+    try:
+        return synthesis_svc.generate_synthesis_markdown(project_id)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )
+
+
+@app.get(
+    "/api/research/projects/{project_id}/synthesis/export-csv",
+    response_class=PlainTextResponse,
+    summary="Export project synthesis data tables as CSV",
+    tags=["Research Program Studio"],
+)
+@app.get(
+    "/api/research/projects/{project_id}/export/csv",
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+)
+async def export_project_synthesis_csv(
+    project_id: str,
+    synthesis_svc: ResearchSynthesisDep,
+    table_type: str = Query("gaps", description="'gaps' | 'contradictions' | 'agenda' | 'campaigns'"),
+) -> str:
+    """Exports structured CSV table for gaps, contradictions, agenda, or campaigns."""
+    try:
+        return synthesis_svc.generate_synthesis_csv(project_id, table_type=table_type)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_table_type", "message": str(e)},
+        )
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"Project '{project_id}' not found."},
+        )

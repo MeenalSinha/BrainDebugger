@@ -24,6 +24,7 @@ Instead of inspecting functions and variables, researchers inspect neurons, syna
 - **V9 — Interactive Circuit Exploration, Explainability & Comparative Analysis Studio**: Interactive Cytoscape canvas with live neighborhood expansion (+1 hop), explainable inspector with verified citations, directed pathway tracer overlay, narrative trace provenance, dual-investigation comparison, and multi-format exports.
 - **V10 — Circuit Robustness & Sensitivity Analysis Lab**: Parameterized sensitivity experiments over real Janelia MaleCNS v1.0 data. One-Factor-at-a-Time and Bounded Multi-Parameter Grid sweeps for synaptic thresholds, candidate/node caps, and what-if ranking profiles. Calculates inclusion fractions $I(v)$, median ranks, rank variability, top-$k$ retention, direction-sensitive edge stability ($u \to v \neq v \to u$), and structural metric sensitivity ($\Delta\text{Nodes}, \Delta\text{Edges}$). Generates Schema v1.0.0 reproducibility manifests and multi-format exports (JSON, Candidate CSV, Edge CSV, Metrics CSV, Markdown Report).
 - **V11 — Evidence-Grounded Hypothesis Workbench & Reproducible Research Notebook**: Full hypothesis lifecycle management and research notebook. Features a deterministic suggestions engine scanning actual results, typed claims & evidence ledger (supporting/contradicting), explicit alternative explanations & methodological bias accounting, follow-up study planner & quantitative runner with automated criteria evaluation, project collections, Kanban board, immutable chronological research timeline, local-first IndexedDB persistence, Cytoscape evidence relationship map, and versioned JSON export/import.
+- **V12 — Research Program Synthesis, Evidence Gap Analysis & Study Prioritization**: Project-level research coordination engine. Synthesizes cross-hypothesis evidence while strictly classifying shared vs independent sources to prevent confirmation inflation, preserves directed edge semantics ($u \to v \neq v \to u$), detects structural contradictions in a researcher review queue, systematically catalogs evidence gaps across 8 scientific dimensions with actionability scoring, computes transparent multi-factor research agendas ($S = \sum w_i F_i$), enforces DAG study prerequisites with DFS cycle prevention, and executes controlled multi-study campaigns with dry-run previews, failure isolation, and multi-format exports (Markdown, CSV).
 
 ---
 
@@ -673,6 +674,59 @@ Controlled state transitions with mandatory reason logging:
 - `GET /api/research/projects/{id}`: Get project details with timeline.
 - `GET /api/research/notebook/export`: Export versioned JSON notebook document.
 - `POST /api/research/notebook/import`: Import versioned JSON notebook document.
+
+---
+
+## Version 12 — Research Program Synthesis, Evidence Gap Analysis & Study Prioritization
+
+BrainDebugger Version 12 extends the application into a comprehensive project-level research coordination studio:
+
+### 1. Cross-Hypothesis Evidence Synthesis & Independence Index
+- **Shared vs Independent Classification**: Distinguishes common provenance sources (e.g. multiple hypotheses citing the exact same execution record or DOI) from independent empirical replications. Automatically issues explicit anti-inflation caveats to prevent false corroboration.
+- **Direction-Sensitive Overlap**: Preserves Janelia MaleCNS v1.0 directed graph semantics; synaptic connections $[u, v]$ and $[v, u]$ are strictly non-interchangeable.
+- **Project Freshness**: Computes project-level staleness metrics and SHA-256 provenance manifests.
+
+### 2. Contradiction & Inconsistency Review Queue
+- **Deterministic Conflict Detection**: Identifies opposing evaluation statuses, conflicting parameter sensitivities, and contradictory causal roles across linked hypotheses.
+- **Structured Review Workflow**: Categorizes contradictions by severity (`high`, `medium`, `low`) and manages resolution state (`pending_review`, `confirmed_contradiction`, `false_positive`, `resolved_by_study`, `reconciled_scope`) with mandatory researcher rationale logging.
+
+### 3. Evidence Gap Analysis & Actionability
+- Catalogs gaps across 8 standardized categories:
+  - `missing_source_evidence`, `insufficient_structural_evidence`, `missing_robustness_evaluation`, `incomplete_followup_study`, `conflicting_results`, `provenance_gap`, `coverage_limitation`, `unverified_interpretation`.
+- Provides explicit actionability ratings, concrete recommendations, and lifecycle status tracking (`open`, `addressed`, `resolved`, `dismissed`).
+
+### 4. Transparent Research Agenda Prioritization
+- Evaluates follow-up investigations using a deterministic multi-factor scoring formula:
+  $$S = \sum_{i} w_i \cdot F_i = w_{\text{gap}} F_{\text{gap}} + w_{\text{hyp}} F_{\text{hyp}} + w_{\text{unc}} F_{\text{unc}} + w_{\text{feas}} F_{\text{feas}} - w_{\text{cost}} F_{\text{cost}}$$
+- Provides full factor breakdowns and real-time interactive weight customization via UI sliders.
+
+### 5. Study Dependency DAG & Cycle Prevention
+- Enforces directed prerequisite constraints between proposed follow-up studies.
+- **DFS Cycle Interception**: Automatically detects and rejects circular dependencies (e.g., $A \to B \to A$) with HTTP 400.
+- **Kahn's Topological Sorting**: Computes valid linear execution schedules and flags studies blocked by incomplete prerequisites.
+
+### 6. Controlled Multi-Study Campaigns
+- **Dry-Run Previews**: Evaluates topological execution order, checks prerequisites, estimates resource costs, and prompts for explicit user confirmation.
+- **Failure-Isolated Execution**: Studies run sequentially in dependency order; failures in one study mark dependent studies as `skipped` without aborting independent branches.
+
+### 7. Multi-Format Exports & Reports
+- **Synthesis Markdown Report (`GET /report`)**: Formatted scientific summary with cross-hypothesis evidence matrix, active contradictions queue, open evidence gaps, prioritized agenda, and MaleCNS v1.0 provenance.
+- **Tabular CSV Exports (`GET /export/csv?table_type=...`)**: Generates structured CSVs for `gaps`, `contradictions`, `agenda`, and `campaigns`.
+
+### 8. V12 Endpoints
+- `POST /api/research/projects/{id}/synthesis`: Compute project evidence synthesis.
+- `GET /api/research/projects/{id}/synthesis`: Retrieve latest synthesis record.
+- `POST /api/research/projects/{id}/contradictions/{c_id}/review`: Submit contradiction review decision with rationale.
+- `PUT /api/research/projects/{id}/gaps/{gap_id}`: Update evidence gap status and resolution notes.
+- `POST /api/research/projects/{id}/agenda`: Generate prioritized follow-up research agenda.
+- `GET /api/research/projects/{id}/agenda`: Retrieve latest research agenda.
+- `POST /api/research/projects/{id}/dependencies`: Register directed prerequisite dependency between studies.
+- `GET /api/research/projects/{id}/dependencies`: List all study dependencies in project.
+- `POST /api/research/campaigns/preview`: Dry-run execution preview with topological ordering.
+- `POST /api/research/campaigns/execute`: Execute multi-study campaign with failure isolation.
+- `GET /api/research/campaigns/{campaign_id}`: Retrieve campaign progress and execution results.
+- `GET /api/research/projects/{id}/report`: Export research program synthesis Markdown report.
+- `GET /api/research/projects/{id}/export/csv`: Export synthesis tables as CSV (`gaps`, `contradictions`, `agenda`, `campaigns`).
 
 ---
 
